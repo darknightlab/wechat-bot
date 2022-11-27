@@ -1,0 +1,19 @@
+version: "3"
+
+# Please copy config/config.example.yaml to config/config.yaml and fill in the variables
+
+services:
+  wechat-bot:
+    image: ghcr.io/darknightlab/wechat-bot:main
+    build: .
+    container_name: wechat-bot
+    restart: always
+    environment:
+      - WECHATY_LOG=verbose
+    volumes:
+      - ./config:/wechat-bot/config
+networks:
+  wechat-bot:
+    name: wechat-bot
+    driver: bridge
+    enable_ipv6: true
