@@ -1,0 +1,16 @@
+# 等待实现
+email:
+    host:
+    port:
+    username:
+    password:
+    sender:
+    receiver:
+
+archive:
+    localurl: # 本地url
+    url: # 公网上的url
+    displayMode: SingleFile
+    command: /env/archivebox-python/bin/python3 /archivebox-python/main.py
+    username:
+    password:
