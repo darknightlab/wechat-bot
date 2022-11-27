@@ -5,7 +5,7 @@ version: "3"
 services:
   wechat-bot:
     image: ghcr.io/darknightlab/wechat-bot:main
-    build: .
+    # build: .
     container_name: wechat-bot
     restart: always
     environment:
