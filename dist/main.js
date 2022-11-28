@@ -41,6 +41,8 @@ const html_entities_1 = require("html-entities");
 const node_child_process_1 = require("node:child_process");
 const URI = __importStar(require("uri-js"));
 const fs_1 = __importDefault(require("fs"));
+const axios_1 = __importDefault(require("axios"));
+const form_data_1 = __importDefault(require("form-data"));
 const yaml_1 = __importDefault(require("yaml"));
 const url_regex_safe_1 = __importDefault(require("url-regex-safe"));
 const qrcode_terminal_1 = __importDefault(require("qrcode-terminal"));
@@ -100,18 +102,17 @@ function onMessage(msg) {
                     // 微信返回的xml中有很多<br/>, 所以要先去掉
                     let xmlText = (0, html_entities_1.decode)(msg.text().replace(new RegExp("<br/>", "g"), ""));
                     let xmlObj = parser.parse(xmlText);
-                    let url;
                     try {
+                        let url;
                         url = xmlObj.msg.appmsg.url;
+                        let archiveURL = yield send2Archive(url);
+                        if (archiveURL) {
+                            yield msg.say(archiveURL);
+                        }
                     }
                     catch (e) {
                         wechaty_1.log.error(logPrefix, e);
-                        msg.say(String(e));
-                        break;
-                    }
-                    let archiveURL = yield send2Archive(url);
-                    if (archiveURL) {
-                        yield msg.say(archiveURL);
+                        msg.say(e.message);
                     }
                     break;
                 // 消息为普通文本, 从普通文本中提取url
@@ -126,13 +127,46 @@ function onMessage(msg) {
                         if (!uriObj.scheme && !url.startsWith("//")) {
                             url = "http://" + url;
                         }
-                        let archiveURL = yield send2Archive(url);
-                        if (archiveURL) {
-                            yield msg.say(archiveURL);
+                        try {
+                            let archiveURL = yield send2Archive(url);
+                            if (archiveURL) {
+                                yield msg.say(archiveURL);
+                            }
+                        }
+                        catch (e) {
+                            wechaty_1.log.error(logPrefix, e);
+                            msg.say(e.message);
                         }
                     }));
                     break;
                 case bot.Message.Type.Video:
+                    break;
+                // 希望用deepdanbooru识别图片内容
+                case bot.Message.Type.Image:
+                    let imgBox = yield msg.toFileBox();
+                    let img = yield imgBox.toStream();
+                    let formdata = new form_data_1.default();
+                    formdata.append("img", img);
+                    axios_1.default
+                        .post(config.animepic.url, formdata)
+                        .then((res) => {
+                        let characters = "";
+                        Object.keys(res.data.character).forEach((name) => {
+                            characters += name + ",";
+                        });
+                        characters = characters.slice(0, -1);
+                        let tags = "";
+                        Object.keys(res.data.general).forEach((tag) => {
+                            tags += tag + ",";
+                        });
+                        tags = tags.slice(0, -1);
+                        let imgInfo = `安全系数: ${Object.keys(res.data.system)[0].substring(7)}\n角色: ${characters}\n标签: ${tags}`;
+                        msg.say(imgInfo);
+                    })
+                        .catch((e) => {
+                        wechaty_1.log.error(logPrefix, e);
+                        msg.say(e.message);
+                    });
                     break;
             }
         }

@@ -4,6 +4,8 @@ import { decode } from "html-entities";
 import { execSync, spawn } from "node:child_process";
 import * as URI from "uri-js";
 import fs from "fs";
+import axios from "axios";
+import FormData from "form-data";
 import YAML from "yaml";
 import urlRegexSafe from "url-regex-safe";
 import qrcodeTerminal from "qrcode-terminal";
@@ -69,17 +71,17 @@ async function onMessage(msg: Message) {
                 // 微信返回的xml中有很多<br/>, 所以要先去掉
                 let xmlText = decode(msg.text().replace(new RegExp("<br/>", "g"), ""));
                 let xmlObj = parser.parse(xmlText);
-                let url: string;
+
                 try {
+                    let url: string;
                     url = xmlObj.msg.appmsg.url;
-                } catch (e) {
+                    let archiveURL = await send2Archive(url);
+                    if (archiveURL) {
+                        await msg.say(archiveURL);
+                    }
+                } catch (e: any) {
                     log.error(logPrefix, e);
-                    msg.say(String(e));
-                    break;
-                }
-                let archiveURL = await send2Archive(url);
-                if (archiveURL) {
-                    await msg.say(archiveURL);
+                    msg.say(e.message);
                 }
                 break;
 
@@ -95,14 +97,47 @@ async function onMessage(msg: Message) {
                     if (!uriObj.scheme && !url.startsWith("//")) {
                         url = "http://" + url;
                     }
-                    let archiveURL = await send2Archive(url);
-                    if (archiveURL) {
-                        await msg.say(archiveURL);
+                    try {
+                        let archiveURL = await send2Archive(url);
+                        if (archiveURL) {
+                            await msg.say(archiveURL);
+                        }
+                    } catch (e: any) {
+                        log.error(logPrefix, e);
+                        msg.say(e.message);
                     }
                 });
                 break;
 
             case bot.Message.Type.Video:
+                break;
+
+            // 希望用deepdanbooru识别图片内容
+            case bot.Message.Type.Image:
+                let imgBox = await msg.toFileBox();
+                let img = await imgBox.toStream();
+                let formdata = new FormData();
+                formdata.append("img", img);
+                axios
+                    .post(config.animepic.url, formdata)
+                    .then((res) => {
+                        let characters = "";
+                        Object.keys(res.data.character).forEach((name) => {
+                            characters += name + ",";
+                        });
+                        characters = characters.slice(0, -1);
+                        let tags = "";
+                        Object.keys(res.data.general).forEach((tag: string) => {
+                            tags += tag + ",";
+                        });
+                        tags = tags.slice(0, -1);
+                        let imgInfo = `安全系数: ${Object.keys(res.data.system)[0].substring(7)}\n角色: ${characters}\n标签: ${tags}`;
+                        msg.say(imgInfo);
+                    })
+                    .catch((e) => {
+                        log.error(logPrefix, e);
+                        msg.say(e.message);
+                    });
                 break;
         }
     }

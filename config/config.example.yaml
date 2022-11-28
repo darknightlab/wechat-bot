@@ -7,6 +7,9 @@ email:
     sender:
     receiver:
 
+animepic:
+    url:
+
 archive:
     localurl: # 本地url
     url: # 公网上的url
