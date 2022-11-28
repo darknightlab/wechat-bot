@@ -171,7 +171,7 @@ async function onFriendship(friendship: Friendship) {
 }
 
 const bot = WechatyBuilder.build({
-    name: "wechatbot",
+    name: "wechat-bot",
     puppet: "wechaty-puppet-wechat",
     puppetOptions: {
         uos: true, // 开启uos协议

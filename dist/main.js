@@ -202,7 +202,7 @@ function onFriendship(friendship) {
     });
 }
 const bot = wechaty_1.WechatyBuilder.build({
-    name: "wechatbot",
+    name: "wechat-bot",
     puppet: "wechaty-puppet-wechat",
     puppetOptions: {
         uos: true, // 开启uos协议
