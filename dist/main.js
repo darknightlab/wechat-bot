@@ -81,7 +81,7 @@ function send2Archive(url) {
     });
 }
 function msgFromFriend(msg) {
-    return !msg.self() && !msg.listener() && msg.listener().friend();
+    return !msg.self() && msg.listener() && msg.listener().friend();
 }
 function onLogin(user) {
     wechaty_1.log.info("StarterBot", "%s login", user);

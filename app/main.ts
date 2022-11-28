@@ -47,7 +47,7 @@ async function send2Archive(url: string) {
 }
 
 function msgFromFriend(msg: Message) {
-    return !msg.self() && !msg.listener() && msg.listener()!.friend();
+    return !msg.self() && msg.listener() && msg.listener()!.friend();
 }
 
 function onLogin(user: Contact) {
