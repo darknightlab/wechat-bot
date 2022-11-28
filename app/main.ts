@@ -46,6 +46,10 @@ async function send2Archive(url: string) {
     }
 }
 
+function msgFromFriend(msg: Message) {
+    return !msg.self() && !msg.listener() && msg.listener()!.friend();
+}
+
 function onLogin(user: Contact) {
     log.info("StarterBot", "%s login", user);
 }
@@ -58,7 +62,7 @@ async function onMessage(msg: Message) {
     let logPrefix = "Message";
     log.info(logPrefix, msg.toString());
 
-    if (!msg.self() && !msg.room()) {
+    if (msgFromFriend(msg)) {
         switch (msg.type()) {
             // 消息属于类似公众号的美观链接
             case bot.Message.Type.Attachment:

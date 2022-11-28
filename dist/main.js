@@ -80,6 +80,9 @@ function send2Archive(url) {
         }
     });
 }
+function msgFromFriend(msg) {
+    return !msg.self() && !msg.listener() && msg.listener().friend();
+}
 function onLogin(user) {
     wechaty_1.log.info("StarterBot", "%s login", user);
 }
@@ -90,7 +93,7 @@ function onMessage(msg) {
     return __awaiter(this, void 0, void 0, function* () {
         let logPrefix = "Message";
         wechaty_1.log.info(logPrefix, msg.toString());
-        if (!msg.self() && !msg.room()) {
+        if (msgFromFriend(msg)) {
             switch (msg.type()) {
                 // 消息属于类似公众号的美观链接
                 case bot.Message.Type.Attachment:
@@ -144,9 +147,14 @@ function onFriendship(friendship) {
             switch (friendship.type()) {
                 // 1. New Friend Request
                 case bot.Friendship.Type.Receive:
-                    yield friendship.accept();
-                    wechaty_1.log.info(logPrefix, `Request from ${contact.name()} is accept succesfully!`);
-                    wechaty_1.log.info(logPrefix, contact.friend());
+                    if (friendship.hello() === "moechika") {
+                        yield friendship.accept();
+                        wechaty_1.log.info(logPrefix, `Request from ${contact.name()} is accept succesfully!`);
+                        // log.info(logPrefix, contact.friend());
+                    }
+                    else {
+                        wechaty_1.log.info(logPrefix, `Request from ${contact.name()} is ignored!`);
+                    }
                     break;
                 // 2. Friend Ship Confirmed
                 case bot.Friendship.Type.Confirm:
