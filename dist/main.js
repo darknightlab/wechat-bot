@@ -135,16 +135,14 @@ function onReady() {
         if (!MyWeChat) {
             throw new Error(`Account ${config.wechat.myaccount} not found`);
         }
-        let rule = new node_schedule_1.default.RecurrenceRule();
-        // rule.hour = config.wechat.reportTime.hour;
-        // rule.minute = config.wechat.reportTime.minute;
-        // rule.second = config.wechat.reportTime.second;
-        rule.tz = config.wechat.reportTime.timezone;
         // 已确认MyWeChat不为undefined
-        let report = node_schedule_1.default.scheduleJob(rule, () => __awaiter(this, void 0, void 0, function* () {
-            yield MyWeChat.say(`今日已存档${TodayPostsSaved.size}个网页`);
+        let report = node_schedule_1.default.scheduleJob({
+            rule: config.wechat.reportTime.cron,
+            tz: config.wechat.reportTime.timezone,
+        }, () => __awaiter(this, void 0, void 0, function* () {
+            yield MyWeChat.say(`统计时间内已存档${TodayPostsSaved.size}个网页`);
+            TodayPostsSaved.clear();
         }));
-        report.reschedule(rule);
         // Jobs.get("report")
         Jobs.set("report", report);
         wechaty_1.log.info("StarterBot", `report job scheduled, will send it to ${MyWeChat.name()}`);
