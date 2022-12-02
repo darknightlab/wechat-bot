@@ -35,26 +35,63 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const wechaty_1 = require("wechaty");
-const fast_xml_parser_1 = require("fast-xml-parser");
-const html_entities_1 = require("html-entities");
-const node_child_process_1 = require("node:child_process");
-const URI = __importStar(require("uri-js"));
 const fs_1 = __importDefault(require("fs"));
 const axios_1 = __importDefault(require("axios"));
 const form_data_1 = __importDefault(require("form-data"));
 const yaml_1 = __importDefault(require("yaml"));
 const url_regex_safe_1 = __importDefault(require("url-regex-safe"));
 const qrcode_terminal_1 = __importDefault(require("qrcode-terminal"));
+const node_schedule_1 = __importDefault(require("node-schedule"));
+const URI = __importStar(require("uri-js"));
+const nodemailer_1 = __importDefault(require("nodemailer"));
+const wechaty_1 = require("wechaty");
+const fast_xml_parser_1 = require("fast-xml-parser");
+const html_entities_1 = require("html-entities");
+const node_child_process_1 = require("node:child_process");
 const parser = new fast_xml_parser_1.XMLParser();
 const configPath = "./config/config.yaml";
 const configFile = fs_1.default.readFileSync(configPath, "utf8");
 const config = yaml_1.default.parse(configFile);
+// qrcodeAPIURL 已被config.wechat.qrcodeAPI替代
+// const qrcodeAPIURL = "https://api.qrserver.com/v1/create-qr-code/?data="; // "https://wechaty.js.org/qrcode/" wechaty 自带接口
+const transporter = nodemailer_1.default.createTransport({
+    host: config.email.host,
+    port: config.email.port,
+    secure: config.email.port == 465,
+    auth: {
+        user: config.email.username,
+        pass: config.email.password,
+    },
+});
+let MyWeChat;
+let Jobs = new Map();
+let TodayPostsSaved = new Set();
+let LastMailTime = (() => {
+    let now = new Date();
+    now.setTime(now.getTime() - config.email.interval * 1000);
+    return now;
+})();
 function onScan(qrcode, status) {
     if (status === wechaty_1.ScanStatus.Waiting || status === wechaty_1.ScanStatus.Timeout) {
-        const qrcodeImageUrl = ["https://wechaty.js.org/qrcode/", encodeURIComponent(qrcode)].join("");
+        const qrcodeImageUrl = [config.wechat.qrcodeAPI, encodeURIComponent(qrcode)].join("");
         wechaty_1.log.info("StarterBot", "onScan: %s(%s) - %s", wechaty_1.ScanStatus[status], status, qrcodeImageUrl);
-        // todo: 发送二维码到邮箱
+        // 如果到达允许的邮件间隔时间, 发送二维码邮件
+        try {
+            if (new Date().getTime() - LastMailTime.getTime() > config.email.interval * 1000) {
+                transporter.sendMail({
+                    from: `"${config.email.senderName}" <${config.email.sender}>`,
+                    to: config.email.receiver,
+                    subject: "wechat-bot: 请扫码登录",
+                    text: "请扫码登录",
+                    html: `<img src="${qrcodeImageUrl}">`,
+                });
+                LastMailTime = new Date();
+                wechaty_1.log.info("StarterBot", "onScan: Send mail successfully");
+            }
+        }
+        catch (e) {
+            wechaty_1.log.error("SendMail", e);
+        }
         qrcode_terminal_1.default.generate(qrcode, { small: true }); // show qrcode on console
     }
     else {
@@ -75,6 +112,7 @@ function send2Archive(url) {
         }).toString("utf8");
         let result = JSON.parse(resultStr);
         if (result.hasOwnProperty("status") && result.status === "success") {
+            TodayPostsSaved.add(result.url);
             return result.url;
         }
         else {
@@ -83,10 +121,34 @@ function send2Archive(url) {
     });
 }
 function msgFromFriend(msg) {
-    return !msg.self() && msg.listener() && msg.listener().friend();
+    return !msg.self() && !msg.room() && msg.talker().friend();
 }
 function onLogin(user) {
-    wechaty_1.log.info("StarterBot", "%s login", user);
+    return __awaiter(this, void 0, void 0, function* () {
+        wechaty_1.log.info("StarterBot", "%s login", user);
+    });
+}
+function onReady() {
+    return __awaiter(this, void 0, void 0, function* () {
+        wechaty_1.log.info("StarterBot", "bot is ready");
+        MyWeChat = yield bot.Contact.find(config.wechat.myaccount);
+        if (!MyWeChat) {
+            throw new Error(`Account ${config.wechat.myaccount} not found`);
+        }
+        let rule = new node_schedule_1.default.RecurrenceRule();
+        // rule.hour = config.wechat.reportTime.hour;
+        // rule.minute = config.wechat.reportTime.minute;
+        // rule.second = config.wechat.reportTime.second;
+        rule.tz = config.wechat.reportTime.timezone;
+        // 已确认MyWeChat不为undefined
+        let report = node_schedule_1.default.scheduleJob(rule, () => __awaiter(this, void 0, void 0, function* () {
+            yield MyWeChat.say(`今日已存档${TodayPostsSaved.size}个网页`);
+        }));
+        report.reschedule(rule);
+        // Jobs.get("report")
+        Jobs.set("report", report);
+        wechaty_1.log.info("StarterBot", `report job scheduled, will send it to ${MyWeChat.name()}`);
+    });
 }
 function onLogout(user) {
     wechaty_1.log.info("StarterBot", "%s logout", user);
@@ -181,7 +243,7 @@ function onFriendship(friendship) {
             switch (friendship.type()) {
                 // 1. New Friend Request
                 case bot.Friendship.Type.Receive:
-                    if (friendship.hello() === "moechika") {
+                    if (friendship.hello() === config.wechat.autoAcceptFriendshipText) {
                         yield friendship.accept();
                         wechaty_1.log.info(logPrefix, `Request from ${contact.name()} is accept succesfully!`);
                         // log.info(logPrefix, contact.friend());
@@ -233,6 +295,7 @@ const bot = wechaty_1.WechatyBuilder.build({
 });
 bot.on("scan", onScan);
 bot.on("login", onLogin);
+bot.on("ready", onReady);
 bot.on("logout", onLogout);
 bot.on("message", onMessage);
 // Friendship Event will emit when got a new friend request, or friendship is confirmed.

@@ -1,27 +1,64 @@
-import { Contact, Message, ScanStatus, WechatyBuilder, log, Friendship } from "wechaty";
-import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
-import { decode } from "html-entities";
-import { execSync, spawn } from "node:child_process";
-import * as URI from "uri-js";
 import fs from "fs";
 import axios from "axios";
 import FormData from "form-data";
 import YAML from "yaml";
 import urlRegexSafe from "url-regex-safe";
 import qrcodeTerminal from "qrcode-terminal";
+import schedule from "node-schedule";
+import * as URI from "uri-js";
+import nodemailer from "nodemailer";
+import { Contact, Message, ScanStatus, WechatyBuilder, log, Friendship } from "wechaty";
+import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
+import { decode } from "html-entities";
+import { execSync, spawn } from "node:child_process";
 
 const parser = new XMLParser();
 
 const configPath = "./config/config.yaml";
 const configFile = fs.readFileSync(configPath, "utf8");
 const config = YAML.parse(configFile);
+// qrcodeAPIURL 已被config.wechat.qrcodeAPI替代
+// const qrcodeAPIURL = "https://api.qrserver.com/v1/create-qr-code/?data="; // "https://wechaty.js.org/qrcode/" wechaty 自带接口
+const transporter = nodemailer.createTransport({
+    host: config.email.host,
+    port: config.email.port,
+    secure: config.email.port == 465,
+    auth: {
+        user: config.email.username,
+        pass: config.email.password,
+    },
+});
+
+let MyWeChat: Contact | undefined;
+let Jobs: Map<string, schedule.Job> = new Map();
+let TodayPostsSaved: Set<string> = new Set();
+let LastMailTime = (() => {
+    let now = new Date();
+    now.setTime(now.getTime() - config.email.interval * 1000);
+    return now;
+})();
 
 function onScan(qrcode: string, status: ScanStatus) {
     if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
-        const qrcodeImageUrl = ["https://wechaty.js.org/qrcode/", encodeURIComponent(qrcode)].join("");
+        const qrcodeImageUrl = [config.wechat.qrcodeAPI, encodeURIComponent(qrcode)].join("");
         log.info("StarterBot", "onScan: %s(%s) - %s", ScanStatus[status], status, qrcodeImageUrl);
 
-        // todo: 发送二维码到邮箱
+        // 如果到达允许的邮件间隔时间, 发送二维码邮件
+        try {
+            if (new Date().getTime() - LastMailTime.getTime() > config.email.interval * 1000) {
+                transporter.sendMail({
+                    from: `"${config.email.senderName}" <${config.email.sender}>`,
+                    to: config.email.receiver,
+                    subject: "wechat-bot: 请扫码登录",
+                    text: "请扫码登录",
+                    html: `<img src="${qrcodeImageUrl}">`,
+                });
+                LastMailTime = new Date();
+                log.info("StarterBot", "onScan: Send mail successfully");
+            }
+        } catch (e) {
+            log.error("SendMail", e);
+        }
 
         qrcodeTerminal.generate(qrcode, { small: true }); // show qrcode on console
     } else {
@@ -42,6 +79,7 @@ async function send2Archive(url: string) {
     }).toString("utf8");
     let result = JSON.parse(resultStr);
     if (result.hasOwnProperty("status") && result.status === "success") {
+        TodayPostsSaved.add(result.url);
         return result.url as string;
     } else {
         return null;
@@ -49,11 +87,32 @@ async function send2Archive(url: string) {
 }
 
 function msgFromFriend(msg: Message) {
-    return !msg.self() && msg.listener() && msg.listener()!.friend();
+    return !msg.self() && !msg.room() && msg.talker().friend();
 }
 
-function onLogin(user: Contact) {
+async function onLogin(user: Contact) {
     log.info("StarterBot", "%s login", user);
+}
+
+async function onReady() {
+    log.info("StarterBot", "bot is ready");
+    MyWeChat = await bot.Contact.find(config.wechat.myaccount);
+    if (!MyWeChat) {
+        throw new Error(`Account ${config.wechat.myaccount} not found`);
+    }
+    let rule = new schedule.RecurrenceRule();
+    // rule.hour = config.wechat.reportTime.hour;
+    // rule.minute = config.wechat.reportTime.minute;
+    // rule.second = config.wechat.reportTime.second;
+    rule.tz = config.wechat.reportTime.timezone;
+    // 已确认MyWeChat不为undefined
+    let report = schedule.scheduleJob(rule, async () => {
+        await MyWeChat!.say(`今日已存档${TodayPostsSaved.size}个网页`);
+    });
+    report.reschedule(rule);
+    // Jobs.get("report")
+    Jobs.set("report", report);
+    log.info("StarterBot", `report job scheduled, will send it to ${MyWeChat.name()}`);
 }
 
 function onLogout(user: Contact) {
@@ -151,7 +210,7 @@ async function onFriendship(friendship: Friendship) {
         switch (friendship.type()) {
             // 1. New Friend Request
             case bot.Friendship.Type.Receive:
-                if (friendship.hello() === "moechika") {
+                if (friendship.hello() === config.wechat.autoAcceptFriendshipText) {
                     await friendship.accept();
                     log.info(logPrefix, `Request from ${contact.name()} is accept succesfully!`);
                     // log.info(logPrefix, contact.friend());
@@ -204,10 +263,10 @@ const bot = WechatyBuilder.build({
 
 bot.on("scan", onScan);
 bot.on("login", onLogin);
+bot.on("ready", onReady);
 bot.on("logout", onLogout);
 bot.on("message", onMessage);
 // Friendship Event will emit when got a new friend request, or friendship is confirmed.
-
 bot.on("friendship", onFriendship);
 
 bot.start()

@@ -1,11 +1,20 @@
-# 等待实现
+wechat:
+    qrcodeAPI: https://api.qrserver.com/v1/create-qr-code/?data=
+    autoAcceptFriendshipText: # 自动接受好友请求的验证消息
+    myaccount: # 你的微信昵称或备注, 是接收报告的微信, 不是机器人的微信
+    reportTime: # 每天0点0分0秒发送报告
+        cron: 0 0 0 * * *
+        timezone: Asia/Shanghai
+
 email:
     host:
     port:
     username:
     password:
     sender:
+    senderName: wechat-bot
     receiver:
+    interval: 600 # 每600s最多发送一封邮件, 防止封号
 
 animepic:
     url:
