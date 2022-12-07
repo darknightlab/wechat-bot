@@ -11,6 +11,7 @@ import { Contact, Message, ScanStatus, WechatyBuilder, log, Friendship } from "w
 import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
 import { decode } from "html-entities";
 import { execSync, spawn } from "node:child_process";
+import { ChatGPTAPI } from "chatgpt";
 
 const parser = new XMLParser();
 
@@ -37,6 +38,7 @@ let LastMailTime = (() => {
     now.setTime(now.getTime() - config.email.interval * 1000);
     return now;
 })();
+let ChatGPTSession: Map<Contact, ChatGPTAPI> = new Map();
 
 function onScan(qrcode: string, status: ScanStatus) {
     if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
@@ -168,6 +170,25 @@ async function onMessage(msg: Message) {
                         msg.say(e.message);
                     }
                 });
+                // ChatGPT
+                if (!ChatGPTSession.has(msg.talker())) {
+                    let cs = new ChatGPTAPI({
+                        sessionToken: config.chatgpt.session_token,
+                        markdown: false,
+                    });
+                    await cs.ensureAuth();
+                    ChatGPTSession.set(msg.talker(), cs);
+                }
+                let cs = ChatGPTSession.get(msg.talker()) as ChatGPTAPI;
+                let resp: string;
+                try {
+                    resp = await cs.sendMessage(plainText);
+                    await msg.say(resp);
+                } catch (e: any) {
+                    log.error(logPrefix, e);
+                    msg.say(e.message);
+                }
+
                 break;
 
             case bot.Message.Type.Video:

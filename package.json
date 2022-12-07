@@ -3,9 +3,10 @@
     "version": "1.0.0",
     "description": "a wechat bot using wechaty",
     "main": "dist/main.js",
+    "type": "module",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
-        "start": "ts-node app/main.ts",
+        "start": "ts-node --esm app/main.ts",
         "build": "tsc"
     },
     "repository": {
@@ -20,6 +21,7 @@
     },
     "homepage": "https://github.com/darknightlab/wechat-bot#readme",
     "dependencies": {
+        "chatgpt": "^1.4.0",
         "fast-xml-parser": "^4.0.12",
         "form-data": "^4.0.0",
         "html-entities": "^2.3.3",

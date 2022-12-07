@@ -16,6 +16,9 @@ email:
     receiver:
     interval: 600 # 每600s最多发送一封邮件, 防止封号
 
+chatgpt:
+    session_token: # __Secure-next-auth.session-token
+
 animepic:
     url:
 
