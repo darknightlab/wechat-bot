@@ -18,6 +18,7 @@ email:
 
 chatgpt:
     session_token: # __Secure-next-auth.session-token
+    timeout: 60
 
 animepic:
     url:

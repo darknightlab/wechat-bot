@@ -31,6 +31,7 @@ const chatGPT = new ChatGPTAPI({
     sessionToken: config.chatgpt.session_token,
     markdown: true,
 });
+const Command = new Map([["chatgpt", cmd_ChatGPT]]);
 let MyWeChat;
 let Jobs = new Map();
 let TodayPostsSaved = new Set();
@@ -40,6 +41,38 @@ let LastMailTime = (() => {
     return now;
 })();
 let ChatGPTSession = new Map();
+// 检测文本是否包含命令
+function cmdInText(msg) {
+    let text = msg.text();
+    let textList = text.split(" ");
+    if (textList[0].startsWith("/")) {
+        let cmd = textList[0].slice(1);
+        if (Command.has(cmd)) {
+            try {
+                Command.get(cmd)(textList.slice(1), msg);
+            }
+            catch (e) {
+                msg.say(e.message);
+            }
+        }
+        else {
+            msg.say(`未知命令: ${cmd}`);
+        }
+        return true;
+    }
+    return false;
+}
+function cmd_ChatGPT(args, msg) {
+    if (args.length > 0) {
+        switch (args[0]) {
+            case "reset":
+                ChatGPTSession.set(msg.talker().id, chatGPT.getConversation());
+        }
+    }
+    else {
+        msg.say("chatgpt <reset>");
+    }
+}
 function onScan(qrcode, status) {
     if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
         const qrcodeImageUrl = [config.wechat.qrcodeAPI, encodeURIComponent(qrcode)].join("");
@@ -139,6 +172,9 @@ async function onMessage(msg) {
                 break;
             // 消息为普通文本, 从普通文本中提取url
             case bot.Message.Type.Text:
+                if (cmdInText(msg)) {
+                    break;
+                }
                 //去掉所有的html标记
                 let plainText = msg.text().replace(/<[^>]+>/g, " ");
                 // 数组去重
@@ -162,13 +198,14 @@ async function onMessage(msg) {
                 });
                 // ChatGPT
                 if (!ChatGPTSession.has(msg.talker().id)) {
-                    let c = chatGPT.getConversation();
-                    ChatGPTSession.set(msg.talker().id, c);
+                    ChatGPTSession.set(msg.talker().id, chatGPT.getConversation());
                 }
                 let c = ChatGPTSession.get(msg.talker().id);
                 let resp;
                 try {
-                    resp = await c.sendMessage(plainText);
+                    resp = await c.sendMessage(plainText, {
+                        timeoutMs: config.chatgpt.timeout * 1000,
+                    });
                     await msg.say(resp);
                 }
                 catch (e) {
