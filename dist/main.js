@@ -27,6 +27,10 @@ const transporter = nodemailer.createTransport({
         pass: config.email.password,
     },
 });
+const chatGPT = new ChatGPTAPI({
+    sessionToken: config.chatgpt.session_token,
+    markdown: true,
+});
 let MyWeChat;
 let Jobs = new Map();
 let TodayPostsSaved = new Set();
@@ -157,18 +161,14 @@ async function onMessage(msg) {
                     }
                 });
                 // ChatGPT
-                if (!ChatGPTSession.has(msg.talker())) {
-                    let cs = new ChatGPTAPI({
-                        sessionToken: config.chatgpt.session_token,
-                        markdown: false,
-                    });
-                    await cs.ensureAuth();
-                    ChatGPTSession.set(msg.talker(), cs);
+                if (!ChatGPTSession.has(msg.talker().id)) {
+                    let c = chatGPT.getConversation();
+                    ChatGPTSession.set(msg.talker().id, c);
                 }
-                let cs = ChatGPTSession.get(msg.talker());
+                let c = ChatGPTSession.get(msg.talker().id);
                 let resp;
                 try {
-                    resp = await cs.sendMessage(plainText);
+                    resp = await c.sendMessage(plainText);
                     await msg.say(resp);
                 }
                 catch (e) {

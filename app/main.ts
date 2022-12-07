@@ -11,7 +11,7 @@ import { Contact, Message, ScanStatus, WechatyBuilder, log, Friendship } from "w
 import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
 import { decode } from "html-entities";
 import { execSync, spawn } from "node:child_process";
-import { ChatGPTAPI } from "chatgpt";
+import { ChatGPTAPI, ChatGPTConversation } from "chatgpt";
 
 const parser = new XMLParser();
 
@@ -30,6 +30,11 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+const chatGPT = new ChatGPTAPI({
+    sessionToken: config.chatgpt.session_token,
+    markdown: true,
+});
+
 let MyWeChat: Contact | undefined;
 let Jobs: Map<string, schedule.Job> = new Map();
 let TodayPostsSaved: Set<string> = new Set();
@@ -38,7 +43,7 @@ let LastMailTime = (() => {
     now.setTime(now.getTime() - config.email.interval * 1000);
     return now;
 })();
-let ChatGPTSession: Map<Contact, ChatGPTAPI> = new Map();
+let ChatGPTSession: Map<string, ChatGPTConversation> = new Map();
 
 function onScan(qrcode: string, status: ScanStatus) {
     if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
@@ -170,19 +175,16 @@ async function onMessage(msg: Message) {
                         msg.say(e.message);
                     }
                 });
+
                 // ChatGPT
-                if (!ChatGPTSession.has(msg.talker())) {
-                    let cs = new ChatGPTAPI({
-                        sessionToken: config.chatgpt.session_token,
-                        markdown: false,
-                    });
-                    await cs.ensureAuth();
-                    ChatGPTSession.set(msg.talker(), cs);
+                if (!ChatGPTSession.has(msg.talker().id)) {
+                    let c = chatGPT.getConversation();
+                    ChatGPTSession.set(msg.talker().id, c);
                 }
-                let cs = ChatGPTSession.get(msg.talker()) as ChatGPTAPI;
+                let c = ChatGPTSession.get(msg.talker().id) as ChatGPTConversation;
                 let resp: string;
                 try {
-                    resp = await cs.sendMessage(plainText);
+                    resp = await c.sendMessage(plainText);
                     await msg.say(resp);
                 } catch (e: any) {
                     log.error(logPrefix, e);
