@@ -5,6 +5,7 @@ version: "3"
 
 services:
     wechat-bot:
+        # image: darknightlab/wechat-bot:main
         image: ghcr.io/darknightlab/wechat-bot:main
         # build: .
         container_name: wechat-bot
