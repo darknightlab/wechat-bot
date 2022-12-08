@@ -335,6 +335,10 @@ async function onMessage(msg: Message) {
                         if (!uriObj.scheme && !url.startsWith("//")) {
                             url = "http://" + url;
                         }
+                        // 去掉过长的url, 否则archivebox会报错, 详见 https://github.com/ArchiveBox/ArchiveBox/issues/549
+                        if (uriObj.host!.length >= 512) {
+                            return;
+                        }
                         try {
                             let archiveURL = await send2Archive(url);
                             if (archiveURL) {

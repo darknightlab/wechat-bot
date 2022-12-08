@@ -104,7 +104,7 @@ async function cmd_chatgpt(args, msg) {
                 break;
             case "refresh": // 需要认证
                 if (!isAuthed(msg.talker().id)) {
-                    msg.say("未认证, 请输入/auth <password>进行认证");
+                    msg.say("未认证, 请输入/auth [password]进行认证");
                     break;
                 }
                 // let token_backup: string = (chatGPT as any)._sessionToken;
@@ -115,7 +115,7 @@ async function cmd_chatgpt(args, msg) {
                 break;
             case "settoken": // 需要认证
                 if (!isAuthed(msg.talker().id)) {
-                    msg.say("未认证, 请输入/auth <password>进行认证");
+                    msg.say("未认证, 请输入/auth [password]进行认证");
                     break;
                 }
                 if (args.length === 2) {
@@ -127,15 +127,22 @@ async function cmd_chatgpt(args, msg) {
             case "disable":
                 // 已经确定contactoptions存在id
                 ContactOptions.get(msg.talker().id).chatgpt.enable = false;
+                if (ChatGPTSession.has(msg.talker().id)) {
+                    ChatGPTSession.delete(msg.talker().id);
+                }
                 break;
             case "enable":
                 // 已经确定contactoptions存在id
                 ContactOptions.get(msg.talker().id).chatgpt.enable = true;
                 break;
+            default:
+                // 命令错误
+                msg.say("chatgpt [reset|refresh|settoken|enable|disable]");
+                break;
         }
     }
     else {
-        msg.say("chatgpt <reset>");
+        msg.say("chatgpt [reset]");
     }
 }
 function cmd_archive(args, msg) {
@@ -147,6 +154,8 @@ function cmd_archive(args, msg) {
             case "disable":
                 ContactOptions.get(msg.talker().id).archivebox.enable = false;
                 break;
+            default:
+                msg.say("archive [enable|disable]");
         }
     }
 }
@@ -159,6 +168,8 @@ function cmd_animepic(args, msg) {
             case "disable":
                 ContactOptions.get(msg.talker().id).animepic.enable = false;
                 break;
+            default:
+                msg.say("animepic [enable|disable]");
         }
     }
 }
@@ -287,6 +298,10 @@ async function onMessage(msg) {
                         // 排除了已经有协议头和"//"开头的情况
                         if (!uriObj.scheme && !url.startsWith("//")) {
                             url = "http://" + url;
+                        }
+                        // 去掉过长的url, 否则archivebox会报错, 详见 https://github.com/ArchiveBox/ArchiveBox/issues/549
+                        if (uriObj.host.length >= 512) {
+                            return;
                         }
                         try {
                             let archiveURL = await send2Archive(url);
