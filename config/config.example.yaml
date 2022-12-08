@@ -5,6 +5,7 @@ wechat:
     reportTime: # 每天0点0分0秒发送报告
         cron: 0 0 0 * * *
         timezone: Asia/Shanghai
+    authPassword: # 认证的字符串
 
 email:
     host:
