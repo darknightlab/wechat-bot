@@ -18,13 +18,16 @@ email:
     interval: 600 # 每600s最多发送一封邮件, 防止封号
 
 chatgpt:
+    enable: true
     session_token: # __Secure-next-auth.session-token
     timeout: 60
 
 animepic:
+    enable: true
     url:
 
 archive:
+    enable: true
     localurl: # 本地url
     url: # 公网上的url
     displayMode: SingleFile

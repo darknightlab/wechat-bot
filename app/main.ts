@@ -64,13 +64,13 @@ let AuthedID: Set<string> = new Set();
 let ContactOptions: Map<string, ContactOption> = new Map();
 let DefaultContactOption: ContactOption = {
     chatgpt: {
-        enable: true,
+        enable: config.chatgpt.enable,
     },
     archivebox: {
-        enable: true,
+        enable: config.archive.enable,
     },
     animepic: {
-        enable: true,
+        enable: config.animepic.enable,
     },
 };
 
