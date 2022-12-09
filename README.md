@@ -60,10 +60,16 @@ npm start
 
 send message to bot, it will automatically reply.
 
+![](./docs/assets/chatgpt%20screenshot.png)
+
 ### ArchiveBox
 
 send links or forward Wechat Articles to bot, it will save to ArchiveBox.
 
+![](./docs/assets/archivebox%20screenshot.png)
+
 ### DeepDanbooru
 
 send anime pictures to bot, it will reply tags.
+
+![](./docs/assets/deepdanbooru%20screenshot.png)
