@@ -1,0 +1,12 @@
+.github/
+.vscode/
+config/
+dist/
+docs/
+node_modules/
+.gitignore
+docker-compose.yml
+Dockerfile
+Readme.md
+**/config.yaml
+**/*.memory-card.json

@@ -1,23 +1,30 @@
 FROM node:lts-bullseye-slim
+
+# install archivebox-python
 WORKDIR /
 RUN apt update && apt install -y git unzip wget && apt install -y virtualenv && \
     git clone https://github.com/darknightlab/archivebox-python && \
-    cd / && mkdir env && cd env && virtualenv -p python3 archivebox-python && cd / &&\
+    cd / && mkdir env && cd env && virtualenv -p python3 archivebox-python && cd / && \
     wget -O chromedriver_linux64.zip https://chromedriver.storage.googleapis.com/107.0.5304.62/chromedriver_linux64.zip && \
     unzip chromedriver_linux64.zip && \
     mv chromedriver /usr/bin/chromedriver && chmod +x /usr/bin/chromedriver && rm chromedriver_linux64.zip && \
     wget -O google-chrome-stable_current_amd64.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
     apt install ./google-chrome-stable_current_amd64.deb -y && \
     rm google-chrome-stable_current_amd64.deb && \
-    apt autoremove -y && apt clean
-RUN cd / && . env/archivebox-python/bin/activate && \
+    apt autoremove -y && apt clean && \
+    cd / && . env/archivebox-python/bin/activate && \
     cd /archivebox-python && pip install --no-cache-dir -r requirements.txt
+
+# install wechat-bot
 WORKDIR /wechat-bot
 COPY . .
 RUN cd /wechat-bot && npm install && \
     apt update && apt install -y ca-certificates fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 lsb-release wget xdg-utils && \
     apt autoremove -y && apt clean
+
+# touch memory-card.json
 WORKDIR /wechat-bot
-RUN touch config/wechat-bot.memory-card.json && \
+RUN mkdir config && touch config/wechat-bot.memory-card.json && \
     ln -s /wechat-bot/config/wechat-bot.memory-card.json wechat-bot.memory-card.json
+
 CMD [ "npm", "start" ]
