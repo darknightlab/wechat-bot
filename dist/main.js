@@ -49,13 +49,13 @@ let AuthedID = new Set();
 let ContactOptions = new Map();
 let DefaultContactOption = {
     chatgpt: {
-        enable: true,
+        enable: config.chatgpt.enable,
     },
     archivebox: {
-        enable: true,
+        enable: config.archive.enable,
     },
     animepic: {
-        enable: true,
+        enable: config.animepic.enable,
     },
 };
 // 检测文本是否包含命令
@@ -358,7 +358,11 @@ async function onMessage(msg) {
                             tags += tag + ",";
                         });
                         tags = tags.slice(0, -1);
-                        let imgInfo = `安全系数: ${Object.keys(res.data.system)[0].substring(7)}\n角色: ${characters}\n标签: ${tags}`;
+                        let risk = "unknown";
+                        if (Object.keys(res.data.system).length === 1) {
+                            risk = Object.keys(res.data.system)[0].substring(7);
+                        }
+                        let imgInfo = `安全系数: ${risk}\n角色: ${characters}\n标签: ${tags}`;
                         msg.say(imgInfo);
                     })
                         .catch((e) => {
