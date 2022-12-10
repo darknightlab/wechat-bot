@@ -12,40 +12,44 @@ import { XMLParser } from "fast-xml-parser";
 import { decode } from "html-entities";
 import { execSync } from "node:child_process";
 import { ChatGPTAPI } from "chatgpt";
+// 实现的不好看
+// 为了在外部控制promise的resolve和reject, 详见 https://stackoverflow.com/questions/26150232/resolve-javascript-promise-outside-the-promise-constructor-scope
+class Task {
+    _resolve = () => { };
+    _reject = () => { };
+    _promise;
+    constructor(executor) {
+        this._promise = new Promise((resolve, reject) => {
+            this._resolve = resolve;
+            this._reject = reject;
+            executor(resolve, reject);
+        });
+    }
+    result() {
+        return this._promise;
+    }
+    resolve(value) {
+        this._resolve(value);
+    }
+    reject(reason) {
+        this._reject(reason);
+    }
+}
 const parser = new XMLParser();
 const configPath = "./config/config.yaml";
 const config = YAML.parse(fs.readFileSync(configPath, "utf8"));
-// qrcodeAPIURL 已被config.wechat.qrcodeAPI替代
-// const qrcodeAPIURL = "https://api.qrserver.com/v1/create-qr-code/?data="; // "https://wechaty.js.org/qrcode/" wechaty 自带接口
-const transporter = nodemailer.createTransport({
-    host: config.email.host,
-    port: config.email.port,
-    secure: config.email.port == 465,
-    auth: {
-        user: config.email.username,
-        pass: config.email.password,
-    },
-});
+// Wechat
 const Command = new Map([
     ["chatgpt", cmd_chatgpt],
     ["auth", cmd_auth],
     ["archive", cmd_archive],
     ["animepic", cmd_animepic],
+    ["test", cmd_test],
 ]);
 let MyWeChat;
-let Jobs = new Map();
-let TodayPostsSaved = new Set();
-let LastMailTime = (() => {
-    let now = new Date();
-    now.setTime(now.getTime() - config.email.interval * 1000);
-    return now;
-})();
-let chatGPT = new ChatGPTAPI({
-    sessionToken: config.chatgpt.session_token,
-    markdown: true,
-});
-let ChatGPTSession = new Map();
 let AuthedID = new Set();
+let Jobs = new Map();
+let MsgQueue = new Map();
 let ContactOptions = new Map();
 let DefaultContactOption = {
     chatgpt: {
@@ -58,6 +62,22 @@ let DefaultContactOption = {
         enable: config.animepic.enable,
     },
 };
+function isAuthed(id) {
+    return AuthedID.has(id);
+}
+function msgFromFriend(msg) {
+    return !msg.self() && !msg.room() && msg.talker().friend();
+}
+function nextMessage(one) {
+    // 如果不存在该联系人的队列, 用id创建一个.
+    if (!MsgQueue.has(one.id)) {
+        MsgQueue.set(one.id, []);
+    }
+    let msgList = MsgQueue.get(one.id);
+    let task = new Task((resolve) => { });
+    msgList.push(task);
+    return task;
+}
 // 检测文本是否包含命令
 function cmdInText(msg) {
     let text = msg.text();
@@ -78,9 +98,6 @@ function cmdInText(msg) {
         return true;
     }
     return false;
-}
-function isAuthed(id) {
-    return AuthedID.has(id);
 }
 function cmd_auth(args, msg) {
     if (AuthedID.has(msg.talker().id)) {
@@ -173,6 +190,57 @@ function cmd_animepic(args, msg) {
         }
     }
 }
+async function cmd_test(args, msg) {
+    msg.say("请在下一条消息中发送任意内容");
+    let nextMsg = await nextMessage(msg.talker()).result();
+    msg.say(nextMsg.text());
+}
+// Mailer
+// qrcodeAPIURL 已被config.wechat.qrcodeAPI替代
+// const qrcodeAPIURL = "https://api.qrserver.com/v1/create-qr-code/?data="; // "https://wechaty.js.org/qrcode/" wechaty 自带接口
+const transporter = nodemailer.createTransport({
+    host: config.email.host,
+    port: config.email.port,
+    secure: config.email.port == 465,
+    auth: {
+        user: config.email.username,
+        pass: config.email.password,
+    },
+});
+let LastMailTime = (() => {
+    let now = new Date();
+    now.setTime(now.getTime() - config.email.interval * 1000);
+    return now;
+})();
+// Archivebox
+let TodayPostsSaved = new Set();
+async function send2Archive(url) {
+    let resultStr = execSync(config.archive.command, {
+        env: {
+            URL: url,
+            ARCHIVE_DISPLAY_MODE: config.archive.displayMode,
+            ARCHIVE_URL: config.archive.url,
+            ARCHIVE_LOCAL_URL: config.archive.localurl,
+            ARCHIVE_USERNAME: config.archive.username,
+            ARCHIVE_PASSWORD: config.archive.password,
+        },
+    }).toString("utf8");
+    let result = JSON.parse(resultStr);
+    if (result.hasOwnProperty("status") && result.status === "success") {
+        TodayPostsSaved.add(result.url);
+        return result.url;
+    }
+    else {
+        return null;
+    }
+}
+// ChatGPT
+let chatGPT = new ChatGPTAPI({
+    sessionToken: config.chatgpt.session_token,
+    markdown: true,
+});
+let ChatGPTSession = new Map();
+// Wechaty 事件
 function onScan(qrcode, status) {
     if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
         const qrcodeImageUrl = [config.wechat.qrcodeAPI, encodeURIComponent(qrcode)].join("");
@@ -199,29 +267,6 @@ function onScan(qrcode, status) {
     else {
         log.info("StarterBot", "onScan: %s(%s)", ScanStatus[status], status);
     }
-}
-async function send2Archive(url) {
-    let resultStr = execSync(config.archive.command, {
-        env: {
-            URL: url,
-            ARCHIVE_DISPLAY_MODE: config.archive.displayMode,
-            ARCHIVE_URL: config.archive.url,
-            ARCHIVE_LOCAL_URL: config.archive.localurl,
-            ARCHIVE_USERNAME: config.archive.username,
-            ARCHIVE_PASSWORD: config.archive.password,
-        },
-    }).toString("utf8");
-    let result = JSON.parse(resultStr);
-    if (result.hasOwnProperty("status") && result.status === "success") {
-        TodayPostsSaved.add(result.url);
-        return result.url;
-    }
-    else {
-        return null;
-    }
-}
-function msgFromFriend(msg) {
-    return !msg.self() && !msg.room() && msg.talker().friend();
 }
 async function onLogin(user) {
     log.info("StarterBot", "%s login", user);
@@ -250,13 +295,24 @@ function onLogout(user) {
 async function onMessage(msg) {
     let logPrefix = "Message";
     log.info(logPrefix, msg.toString());
+    let talker = msg.talker();
+    // 优先级高于命令!! 例如在等待消息的过程中, 尽管接收到的是disable的命令, 也会因为这里的return而跳过.
+    // 如果有等待消息的队列, 则捕捉消息
+    if (MsgQueue.has(talker.id)) {
+        let queue = MsgQueue.get(talker.id);
+        if (queue.length > 0) {
+            let p = queue.shift();
+            p.resolve(msg);
+            return;
+        }
+    }
     let contactOption;
-    if (ContactOptions.has(msg.talker().id)) {
-        contactOption = ContactOptions.get(msg.talker().id);
+    if (ContactOptions.has(talker.id)) {
+        contactOption = ContactOptions.get(talker.id);
     }
     else {
         contactOption = DefaultContactOption;
-        ContactOptions.set(msg.talker().id, contactOption);
+        ContactOptions.set(talker.id, contactOption);
     }
     if (msgFromFriend(msg)) {
         switch (msg.type()) {
@@ -318,10 +374,10 @@ async function onMessage(msg) {
                 // ChatGPT
                 if (contactOption.chatgpt.enable) {
                     // ChatGPT
-                    if (!ChatGPTSession.has(msg.talker().id)) {
-                        ChatGPTSession.set(msg.talker().id, chatGPT.getConversation());
+                    if (!ChatGPTSession.has(talker.id)) {
+                        ChatGPTSession.set(talker.id, chatGPT.getConversation());
                     }
-                    let c = ChatGPTSession.get(msg.talker().id);
+                    let c = ChatGPTSession.get(talker.id);
                     let resp;
                     try {
                         resp = await c.sendMessage(plainText, {
