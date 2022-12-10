@@ -291,6 +291,8 @@ let ChatGPTSession: Map<string, ChatGPTConversation> = new Map();
 function getSessionToken() {
     let token = execSync(config.chatgpt.command, {
         env: {
+            HTTP_PROXY: config.chatgpt.proxy,
+            HTTPS_PROXY: config.chatgpt.proxy,
             CHATGPT_USERNAME: config.chatgpt.username,
             CHATGPT_PASSWORD: config.chatgpt.password,
         },
