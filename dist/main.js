@@ -125,10 +125,19 @@ async function cmd_chatgpt(args, msg) {
                     break;
                 }
                 // let token_backup: string = (chatGPT as any)._sessionToken;
-                let token = await chatGPT.ensureAuth();
+                // let token = await chatGPT.ensureAuth();
                 // msg.say(`token: ${token}`);
                 // config.chatgpt.session_token = token;
                 // fs.writeFileSync(configPath, YAML.stringify(config));
+                let token = getSessionToken();
+                if (token.startsWith("Error")) {
+                    msg.say(token);
+                }
+                else {
+                    config.chatgpt.session_token = token;
+                    fs.writeFileSync(configPath, YAML.stringify(config));
+                    msg.say(`token: ${token}`);
+                }
                 break;
             case "settoken": // 需要认证
                 if (!isAuthed(msg.talker().id)) {
@@ -240,6 +249,15 @@ let chatGPT = new ChatGPTAPI({
     markdown: true,
 });
 let ChatGPTSession = new Map();
+function getSessionToken() {
+    let token = execSync(config.chatgpt.command, {
+        env: {
+            CHATGPT_USERNAME: config.chatgpt.username,
+            CHATGPT_PASSWORD: config.chatgpt.password,
+        },
+    }).toString("utf8");
+    return token;
+}
 // Wechaty 事件
 function onScan(qrcode, status) {
     if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
