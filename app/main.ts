@@ -205,6 +205,7 @@ async function cmd_archive(args: string[], msg: Message) {
                 break;
             default:
                 await msg.say("archive [enable|disable]");
+                break;
         }
     }
 }
@@ -220,6 +221,7 @@ async function cmd_animepic(args: string[], msg: Message) {
                 break;
             default:
                 await msg.say("animepic [enable|disable]");
+                break;
         }
     }
 }
@@ -471,10 +473,17 @@ async function onMessage(msg: Message) {
                             case "ChatGPT failed to refresh auth token. Error: session token may have expired":
                                 refreshSessionToken();
                                 await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息");
+                                break;
+
+                            case "ChatGPT failed to refresh auth token. Error: Unauthorized":
+                                refreshSessionToken();
+                                await msg.say("Session Token出错, 正在尝试刷新Session Token, 请重新发送消息");
+                                break;
 
                             default:
                                 log.error(logPrefix, e);
                                 await msg.say(e.message);
+                                break;
                         }
                     }
                 }
