@@ -79,37 +79,37 @@ function nextMessage(one) {
     return task;
 }
 // 检测文本是否包含命令
-function cmdInText(msg) {
+async function cmdInText(msg) {
     let text = msg.text();
     let textList = text.split(" ");
     if (textList[0].startsWith("/")) {
         let cmd = textList[0].slice(1);
         if (Command.has(cmd)) {
             try {
-                Command.get(cmd)(textList.slice(1), msg);
+                await Command.get(cmd)(textList.slice(1), msg);
             }
             catch (e) {
-                msg.say(e.message);
+                await msg.say(e.message);
             }
         }
         else {
-            msg.say(`未知命令: ${cmd}`);
+            await msg.say(`未知命令: ${cmd}`);
         }
         return true;
     }
     return false;
 }
-function cmd_auth(args, msg) {
+async function cmd_auth(args, msg) {
     if (AuthedID.has(msg.talker().id)) {
-        msg.say("已认证");
+        await msg.say("已认证");
     }
     else {
         if (args.length === 1 && args[0] === config.wechat.authPassword) {
             AuthedID.add(msg.talker().id);
-            msg.say("认证成功");
+            await msg.say("认证成功");
         }
         else {
-            msg.say("认证失败");
+            await msg.say("认证失败");
         }
     }
 }
@@ -121,7 +121,7 @@ async function cmd_chatgpt(args, msg) {
                 break;
             case "refresh": // 需要认证
                 if (!isAuthed(msg.talker().id)) {
-                    msg.say("未认证, 请输入/auth [password]进行认证");
+                    await msg.say("未认证, 请输入/auth [password]进行认证");
                     break;
                 }
                 // let token_backup: string = (chatGPT as any)._sessionToken;
@@ -129,27 +129,21 @@ async function cmd_chatgpt(args, msg) {
                 // msg.say(`token: ${token}`);
                 // config.chatgpt.session_token = token;
                 // fs.writeFileSync(configPath, YAML.stringify(config));
-                let token = getSessionToken();
-                if (token.startsWith("Error")) {
-                    msg.say(token);
-                }
-                else {
-                    config.chatgpt.session_token = token;
-                    fs.writeFileSync(configPath, YAML.stringify(config));
-                    msg.say(`token: ${token}`);
-                }
+                // 成功则是token, 不成功则是报错信息
+                await msg.say(refreshSessionToken());
                 break;
             case "settoken": // 需要认证
                 if (!isAuthed(msg.talker().id)) {
-                    msg.say("未认证, 请输入/auth [password]进行认证");
+                    await msg.say("未认证, 请输入/auth [password]进行认证");
                     break;
                 }
                 if (args.length === 2) {
                     chatGPT._sessionToken = args[1];
                     config.chatgpt.session_token = args[1];
                     fs.writeFileSync(configPath, YAML.stringify(config));
-                    msg.say("设置成功");
+                    await msg.say("设置成功");
                 }
+                break;
             case "disable":
                 // 已经确定contactoptions存在id
                 ContactOptions.get(msg.talker().id).chatgpt.enable = false;
@@ -163,15 +157,15 @@ async function cmd_chatgpt(args, msg) {
                 break;
             default:
                 // 命令错误
-                msg.say("chatgpt [reset|refresh|settoken|enable|disable]");
+                await msg.say("chatgpt [reset|refresh|settoken|enable|disable]");
                 break;
         }
     }
     else {
-        msg.say("chatgpt [reset]");
+        await msg.say("chatgpt [reset]");
     }
 }
-function cmd_archive(args, msg) {
+async function cmd_archive(args, msg) {
     if (args.length > 0) {
         switch (args[0]) {
             case "enable":
@@ -181,11 +175,11 @@ function cmd_archive(args, msg) {
                 ContactOptions.get(msg.talker().id).archivebox.enable = false;
                 break;
             default:
-                msg.say("archive [enable|disable]");
+                await msg.say("archive [enable|disable]");
         }
     }
 }
-function cmd_animepic(args, msg) {
+async function cmd_animepic(args, msg) {
     if (args.length > 0) {
         switch (args[0]) {
             case "enable":
@@ -195,14 +189,14 @@ function cmd_animepic(args, msg) {
                 ContactOptions.get(msg.talker().id).animepic.enable = false;
                 break;
             default:
-                msg.say("animepic [enable|disable]");
+                await msg.say("animepic [enable|disable]");
         }
     }
 }
 async function cmd_test(args, msg) {
-    msg.say("请在下一条消息中发送任意内容");
+    await msg.say("请在下一条消息中发送任意内容");
     let nextMsg = await nextMessage(msg.talker()).result();
-    msg.say(nextMsg.text());
+    await msg.say(nextMsg.text());
 }
 // Mailer
 // qrcodeAPIURL 已被config.wechat.qrcodeAPI替代
@@ -259,6 +253,18 @@ function getSessionToken() {
         },
     }).toString("utf8");
     return token;
+}
+function refreshSessionToken() {
+    let token = getSessionToken();
+    if (token.startsWith("Error")) {
+        return token;
+    }
+    else {
+        chatGPT._sessionToken = token;
+        config.chatgpt.session_token = token;
+        fs.writeFileSync(configPath, YAML.stringify(config));
+        return `token: ${token}`;
+    }
 }
 // Wechaty 事件
 function onScan(qrcode, status) {
@@ -353,14 +359,14 @@ async function onMessage(msg) {
                     }
                     catch (e) {
                         log.error(logPrefix, e);
-                        msg.say(e.message);
+                        await msg.say(e.message);
                     }
                 }
                 break;
             // 消息为普通文本, 从普通文本中提取url
             case bot.Message.Type.Text:
                 // 命令优先级最高, 且不会被其他功能处理
-                if (cmdInText(msg)) {
+                if (await cmdInText(msg)) {
                     break;
                 }
                 //去掉所有的html标记
@@ -387,7 +393,7 @@ async function onMessage(msg) {
                         }
                         catch (e) {
                             log.error(logPrefix, e);
-                            msg.say(e.message);
+                            await msg.say(e.message);
                         }
                     });
                 }
@@ -406,8 +412,14 @@ async function onMessage(msg) {
                         await msg.say(resp);
                     }
                     catch (e) {
-                        log.error(logPrefix, e);
-                        msg.say(e.message);
+                        switch (e.message) {
+                            case "ChatGPT failed to refresh auth token. Error: session token may have expired":
+                                refreshSessionToken();
+                                await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息");
+                            default:
+                                log.error(logPrefix, e);
+                                await msg.say(e.message);
+                        }
                     }
                 }
                 break;
@@ -423,7 +435,7 @@ async function onMessage(msg) {
                     formdata.append("img", img);
                     axios
                         .post(config.animepic.url, formdata)
-                        .then((res) => {
+                        .then(async (res) => {
                         let characters = "";
                         Object.keys(res.data.character).forEach((name) => {
                             characters += name + ",";
@@ -439,11 +451,11 @@ async function onMessage(msg) {
                             risk = Object.keys(res.data.system)[0].substring(7);
                         }
                         let imgInfo = `安全系数: ${risk}\n角色: ${characters}\n标签: ${tags}`;
-                        msg.say(imgInfo);
+                        await msg.say(imgInfo);
                     })
-                        .catch((e) => {
+                        .catch(async (e) => {
                         log.error(logPrefix, e);
-                        msg.say(e.message);
+                        await msg.say(e.message);
                     });
                 }
                 break;
