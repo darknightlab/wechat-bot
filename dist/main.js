@@ -271,6 +271,7 @@ async function getAPI() {
                 email: config.chatgpt.username,
                 password: config.chatgpt.password,
                 isGoogleLogin: config.chatgpt.isGoogleLogin,
+                isMicrosoftLogin: config.chatgpt.isMicrosoftLogin,
                 proxyServer: config.chatgpt.proxy,
                 captchaToken: config.chatgpt.captchaToken,
             });
@@ -284,6 +285,7 @@ async function getAPI() {
                 email: config.chatgpt.username,
                 password: config.chatgpt.password,
                 isGoogleLogin: config.chatgpt.isGoogleLogin,
+                isMicrosoftLogin: config.chatgpt.isMicrosoftLogin,
                 proxyServer: config.chatgpt.proxy,
                 captchaToken: config.chatgpt.captchaToken,
             });
@@ -296,6 +298,7 @@ async function getAPI() {
                 email: config.chatgpt.username,
                 password: config.chatgpt.password,
                 isGoogleLogin: config.chatgpt.isGoogleLogin,
+                isMicrosoftLogin: config.chatgpt.isMicrosoftLogin,
                 proxyServer: config.chatgpt.proxy,
                 captchaToken: config.chatgpt.captchaToken,
             });

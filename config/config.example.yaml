@@ -24,6 +24,7 @@ chatgpt:
     proxy: # x.x.x.x:7890
     timeout: 60
     isGoogleLogin: false
+    isMicrosoftLogin: false
     username: # chatgpt username
     password: # chatgpt password
 
