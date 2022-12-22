@@ -11,7 +11,7 @@ import { Contact, Message, ScanStatus, WechatyBuilder, log, Friendship } from "w
 import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
 import { decode } from "html-entities";
 import { execSync, spawn } from "node:child_process";
-import { ChatGPTAPI, ChatGPTConversation } from "chatgpt";
+import { ChatGPTAPI, ChatGPTAPIBrowser, getOpenAIAuth, SendMessageOptions, ChatResponse } from "chatgpt";
 
 type ContactOption = {
     chatgpt: {
@@ -85,12 +85,17 @@ let DefaultContactOption: ContactOption = {
     },
 };
 
+async function middleware(msg: Message) {
+    return msg;
+}
+
 function isAuthed(id: string) {
     return AuthedID.has(id);
 }
 
 function msgFromFriend(msg: Message) {
-    return !msg.self() && !msg.room() && msg.talker().friend();
+    let notFriend = ["微信安全中心", "文件传输助手", "朋友推荐消息", "微信支付", "服务通知", "微信团队"];
+    return !msg.self() && !msg.room() && !notFriend.includes(msg.talker().name()) && msg.talker().friend();
 }
 
 function nextMessage(one: Contact) {
@@ -117,7 +122,7 @@ async function cmdInText(msg: Message) {
                 await msg.say(e.message);
             }
         } else {
-            await msg.say(`未知命令: ${cmd}`);
+            await msg.say(`未知命令: /${cmd}`);
         }
         return true;
     }
@@ -140,34 +145,21 @@ async function cmd_auth(args: string[], msg: Message) {
 async function cmd_chatgpt(args: string[], msg: Message) {
     if (args.length > 0) {
         switch (args[0]) {
-            case "reset":
-                ChatGPTSession.set(msg.talker().id, chatGPT.getConversation());
+            case "clear":
+                ChatGPTSession.set(msg.talker().id, getConversation(chatGPT));
                 break;
 
-            case "refresh": // 需要认证
+            case "reset": // 需要认证
                 if (!isAuthed(msg.talker().id)) {
                     await msg.say("未认证, 请输入/auth [password]进行认证");
                     break;
                 }
-                // let token_backup: string = (chatGPT as any)._sessionToken;
-                // let token = await chatGPT.ensureAuth();
-                // msg.say(`token: ${token}`);
-                // config.chatgpt.session_token = token;
-                // fs.writeFileSync(configPath, YAML.stringify(config));
-                // 成功则是token, 不成功则是报错信息
-                await msg.say(refreshSessionToken());
-                break;
-
-            case "settoken": // 需要认证
-                if (!isAuthed(msg.talker().id)) {
-                    await msg.say("未认证, 请输入/auth [password]进行认证");
-                    break;
-                }
-                if (args.length === 2) {
-                    (chatGPT as any)._sessionToken = args[1];
-                    config.chatgpt.session_token = args[1];
-                    fs.writeFileSync(configPath, YAML.stringify(config));
-                    await msg.say("设置成功");
+                // 成功则是重置成功, 不成功则是报错信息
+                try {
+                    await chatGPT.resetSession();
+                    msg.say("重置成功");
+                } catch (e: any) {
+                    await msg.say(e.message);
                 }
                 break;
 
@@ -186,11 +178,11 @@ async function cmd_chatgpt(args: string[], msg: Message) {
 
             default:
                 // 命令错误
-                await msg.say("chatgpt [reset|refresh|settoken|enable|disable]");
+                await msg.say("chatgpt [clear|reset|enable|disable]");
                 break;
         }
     } else {
-        await msg.say("chatgpt [reset]");
+        await msg.say("chatgpt [clear|reset|enable|disable]");
     }
 }
 
@@ -277,37 +269,80 @@ async function send2Archive(url: string) {
 }
 
 // ChatGPT
-
-let chatGPT = new ChatGPTAPI({
-    sessionToken: config.chatgpt.session_token,
-    markdown: true,
-});
-
+let chatGPT = await getAPI();
 let ChatGPTSession: Map<string, ChatGPTConversation> = new Map();
 
-function getSessionToken() {
-    let token = execSync(config.chatgpt.command, {
-        env: {
-            HTTP_PROXY: config.chatgpt.proxy,
-            HTTPS_PROXY: config.chatgpt.proxy,
-            CHATGPT_USERNAME: config.chatgpt.username,
-            CHATGPT_PASSWORD: config.chatgpt.password,
-        },
-    }).toString("utf8");
-    return token;
+function getConversation(api: ChatGPTAPI | ChatGPTAPIBrowser) {
+    return new ChatGPTConversation(api);
 }
 
-function refreshSessionToken() {
-    let token = getSessionToken();
-    if (token.startsWith("Error")) {
-        return token;
-    } else {
-        (chatGPT as any)._sessionToken = token;
-        config.chatgpt.session_token = token;
-        fs.writeFileSync(configPath, YAML.stringify(config));
-        return `token: ${token}`;
+class ChatGPTConversation {
+    conversationId: string | undefined = undefined;
+    messageIdList: string[];
+    _api: ChatGPTAPI | ChatGPTAPIBrowser;
+    constructor(api: ChatGPTAPI | ChatGPTAPIBrowser) {
+        this._api = api;
+        this.messageIdList = [];
+    }
+
+    async sendMessage(message: string, opts: SendMessageOptions = {}) {
+        if (this.conversationId && !opts.conversationId) {
+            opts.conversationId = this.conversationId;
+        }
+        if (this.messageIdList.length > 0 && !opts.parentMessageId) {
+            opts.parentMessageId = this.messageIdList[this.messageIdList.length - 1];
+        }
+        let response = await this._api.sendMessage(message, opts);
+        this.messageIdList.push(response.messageId);
+        if (!this.conversationId) {
+            this.conversationId = response.conversationId;
+        }
+        return response;
     }
 }
+
+async function getAPI() {
+    let method = config.chatgpt.method as string;
+    let api: ChatGPTAPI | ChatGPTAPIBrowser;
+    switch (method) {
+        case "OpenAIAuth":
+            // method getOpenAIAuth
+            let openAIAuth = await getOpenAIAuth({
+                email: config.chatgpt.username as string,
+                password: config.chatgpt.password as string,
+                isGoogleLogin: config.chatgpt.isGoogleLogin as boolean,
+                proxyServer: config.chatgpt.proxy as string,
+                captchaToken: config.chatgpt.captchaToken as string,
+            });
+            api = new ChatGPTAPI({ ...openAIAuth, markdown: true });
+            await api.initSession();
+            break;
+        case "Browser":
+            // method Browser
+            api = new ChatGPTAPIBrowser({
+                email: config.chatgpt.username as string,
+                password: config.chatgpt.password as string,
+                isGoogleLogin: config.chatgpt.isGoogleLogin as boolean,
+                proxyServer: config.chatgpt.proxy as string,
+                captchaToken: config.chatgpt.captchaToken as string,
+            });
+            await api.initSession();
+            break;
+        default: // default method is Browser
+            // method Browser
+            api = new ChatGPTAPIBrowser({
+                email: config.chatgpt.username as string,
+                password: config.chatgpt.password as string,
+                isGoogleLogin: config.chatgpt.isGoogleLogin as boolean,
+                proxyServer: config.chatgpt.proxy as string,
+                captchaToken: config.chatgpt.captchaToken as string,
+            });
+            await api.initSession();
+            break;
+    }
+    return api;
+}
+
 // Wechaty 事件
 
 function onScan(qrcode: string, status: ScanStatus) {
@@ -373,6 +408,11 @@ async function onMessage(msg: Message) {
     let logPrefix = "Message";
     log.info(logPrefix, msg.toString());
 
+    // 只回复好友的消息
+    if (!msgFromFriend(msg)) {
+        return;
+    }
+
     let talker = msg.talker();
 
     // 优先级高于命令!! 例如在等待消息的过程中, 尽管接收到的是disable的命令, 也会因为这里的return而跳过.
@@ -394,19 +434,55 @@ async function onMessage(msg: Message) {
         ContactOptions.set(talker.id, contactOption);
     }
 
-    if (msgFromFriend(msg)) {
-        switch (msg.type()) {
-            // 消息属于类似公众号的美观链接
-            case bot.Message.Type.Attachment:
-                // 微信返回的xml中有很多<br/>, 所以要先去掉
-                let xmlText = decode(msg.text().replace(new RegExp("<br/>", "g"), ""));
-                let xmlObj = parser.parse(xmlText);
+    switch (msg.type()) {
+        // 消息属于类似公众号的美观链接
+        case bot.Message.Type.Attachment:
+            // 微信返回的xml中有很多<br/>, 所以要先去掉
+            let xmlText = decode(msg.text().replace(new RegExp("<br/>", "g"), ""));
+            let xmlObj = parser.parse(xmlText);
 
-                // archivebox
-                if (contactOption.archivebox.enable) {
+            // archivebox
+            if (contactOption.archivebox.enable) {
+                try {
+                    let url: string;
+                    url = xmlObj.msg.appmsg.url;
+                    let archiveURL = await send2Archive(url);
+                    if (archiveURL) {
+                        await msg.say(archiveURL);
+                    }
+                } catch (e: any) {
+                    log.error(logPrefix, e);
+                    await msg.say(e.message);
+                }
+            }
+
+            break;
+
+        // 消息为普通文本, 从普通文本中提取url
+        case bot.Message.Type.Text:
+            // 命令优先级最高, 且不会被其他功能处理
+            if (await cmdInText(msg)) {
+                break;
+            }
+
+            //去掉所有的html标记
+            let plainText = msg.text().replace(/<[^>]+>/g, " ");
+
+            // archivebox
+            if (contactOption.archivebox.enable) {
+                // 数组去重
+                let urls = new Set(plainText.match(urlRegexSafe()));
+                urls.forEach(async (url) => {
+                    let uriObj = URI.parse(url);
+                    // 排除了已经有协议头和"//"开头的情况
+                    if (!uriObj.scheme && !url.startsWith("//")) {
+                        url = "http://" + url;
+                    }
+                    // 去掉过长的url, 否则archivebox会报错, 详见 https://github.com/ArchiveBox/ArchiveBox/issues/549
+                    if (uriObj.host!.length >= 512) {
+                        return;
+                    }
                     try {
-                        let url: string;
-                        url = xmlObj.msg.appmsg.url;
                         let archiveURL = await send2Archive(url);
                         if (archiveURL) {
                             await msg.say(archiveURL);
@@ -415,120 +491,83 @@ async function onMessage(msg: Message) {
                         log.error(logPrefix, e);
                         await msg.say(e.message);
                     }
-                }
+                });
+            }
 
-                break;
-
-            // 消息为普通文本, 从普通文本中提取url
-            case bot.Message.Type.Text:
-                // 命令优先级最高, 且不会被其他功能处理
-                if (await cmdInText(msg)) {
-                    break;
-                }
-
-                //去掉所有的html标记
-                let plainText = msg.text().replace(/<[^>]+>/g, " ");
-
-                // archivebox
-                if (contactOption.archivebox.enable) {
-                    // 数组去重
-                    let urls = new Set(plainText.match(urlRegexSafe()));
-                    urls.forEach(async (url) => {
-                        let uriObj = URI.parse(url);
-                        // 排除了已经有协议头和"//"开头的情况
-                        if (!uriObj.scheme && !url.startsWith("//")) {
-                            url = "http://" + url;
-                        }
-                        // 去掉过长的url, 否则archivebox会报错, 详见 https://github.com/ArchiveBox/ArchiveBox/issues/549
-                        if (uriObj.host!.length >= 512) {
-                            return;
-                        }
-                        try {
-                            let archiveURL = await send2Archive(url);
-                            if (archiveURL) {
-                                await msg.say(archiveURL);
-                            }
-                        } catch (e: any) {
-                            log.error(logPrefix, e);
-                            await msg.say(e.message);
-                        }
-                    });
-                }
-
+            // ChatGPT
+            if (contactOption.chatgpt.enable) {
                 // ChatGPT
-                if (contactOption.chatgpt.enable) {
-                    // ChatGPT
-                    if (!ChatGPTSession.has(talker.id)) {
-                        ChatGPTSession.set(talker.id, chatGPT.getConversation());
-                    }
-                    let c = ChatGPTSession.get(talker.id)!;
-                    let resp: string;
-                    try {
-                        resp = await c.sendMessage(plainText, {
-                            timeoutMs: config.chatgpt.timeout * 1000,
-                        });
-                        await msg.say(resp);
-                    } catch (e: any) {
-                        switch (e.message) {
-                            case "ChatGPT failed to refresh auth token. Error: session token may have expired":
-                                refreshSessionToken();
-                                await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息");
-                                break;
-
-                            case "ChatGPT failed to refresh auth token. Error: Unauthorized":
-                                refreshSessionToken();
-                                await msg.say("Session Token出错, 正在尝试刷新Session Token, 请重新发送消息");
-                                break;
-
-                            default:
-                                log.error(logPrefix, e);
-                                await msg.say(e.message);
-                                break;
-                        }
-                    }
+                if (!ChatGPTSession.has(talker.id)) {
+                    // getConversation or chatGPT.getConversation() 等待ChatGPTAPIBrowser实现getConversation方法
+                    ChatGPTSession.set(talker.id, getConversation(chatGPT));
                 }
+                let c = ChatGPTSession.get(talker.id)!;
+                let resp: ChatResponse;
+                try {
+                    resp = await c.sendMessage(plainText, {
+                        timeoutMs: config.chatgpt.timeout * 1000,
+                    });
+                    await msg.say(resp.response);
+                } catch (e: any) {
+                    switch (e.message) {
+                        case "ChatGPT failed to refresh auth token. Error: session token may have expired":
+                            await chatGPT.resetSession();
+                            await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息");
+                            break;
 
-                break;
+                        case "ChatGPT failed to refresh auth token. Error: Unauthorized":
+                            await chatGPT.resetSession();
+                            await msg.say("Session Token出错, 正在尝试刷新Session Token, 请重新发送消息");
+                            break;
 
-            case bot.Message.Type.Video:
-                break;
-
-            // 希望用deepdanbooru识别图片内容
-            case bot.Message.Type.Image:
-                // animepic
-                if (contactOption.animepic.enable) {
-                    let imgBox = await msg.toFileBox();
-                    let img = await imgBox.toStream();
-                    let formdata = new FormData();
-                    formdata.append("img", img);
-                    axios
-                        .post(config.animepic.url, formdata)
-                        .then(async (res) => {
-                            let characters = "";
-                            Object.keys(res.data.character).forEach((name) => {
-                                characters += name + ",";
-                            });
-                            characters = characters.slice(0, -1);
-                            let tags = "";
-                            Object.keys(res.data.general).forEach((tag: string) => {
-                                tags += tag + ",";
-                            });
-                            tags = tags.slice(0, -1);
-                            let risk = "unknown";
-                            if (Object.keys(res.data.system).length === 1) {
-                                risk = Object.keys(res.data.system)[0].substring(7);
-                            }
-                            let imgInfo = `安全系数: ${risk}\n角色: ${characters}\n标签: ${tags}`;
-                            await msg.say(imgInfo);
-                        })
-                        .catch(async (e) => {
+                        default:
                             log.error(logPrefix, e);
                             await msg.say(e.message);
-                        });
+                            break;
+                    }
                 }
+            }
 
-                break;
-        }
+            break;
+
+        case bot.Message.Type.Video:
+            break;
+
+        // 希望用deepdanbooru识别图片内容
+        case bot.Message.Type.Image:
+            // animepic
+            if (contactOption.animepic.enable) {
+                let imgBox = await msg.toFileBox();
+                let img = await imgBox.toStream();
+                let formdata = new FormData();
+                formdata.append("img", img);
+                axios
+                    .post(config.animepic.url, formdata)
+                    .then(async (res) => {
+                        let characters = "";
+                        Object.keys(res.data.character).forEach((name) => {
+                            characters += name + ",";
+                        });
+                        characters = characters.slice(0, -1);
+                        let tags = "";
+                        Object.keys(res.data.general).forEach((tag: string) => {
+                            tags += tag + ",";
+                        });
+                        tags = tags.slice(0, -1);
+                        let risk = "unknown";
+                        if (Object.keys(res.data.system).length === 1) {
+                            risk = Object.keys(res.data.system)[0].substring(7);
+                        }
+                        let imgInfo = `安全系数: ${risk}\n角色: ${characters}\n标签: ${tags}`;
+                        await msg.say(imgInfo);
+                    })
+                    .catch(async (e) => {
+                        log.error(logPrefix, e);
+                        await msg.say(e.message);
+                    });
+            }
+
+            break;
     }
 }
 

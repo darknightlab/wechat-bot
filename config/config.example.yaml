@@ -18,11 +18,12 @@ email:
     interval: 600 # 每600s最多发送一封邮件, 防止封号
 
 chatgpt:
+    method: Browser
+    captchaToken: # 验证码
     enable: true
     proxy: # http://x.x.x.x:7890
-    session_token: # __Secure-next-auth.session-token
     timeout: 60
-    command: /env/chatgpt-python/bin/python3 /wechat-bot/app/get_session_token.py
+    isGoogleLogin: false
     username: # chatgpt username
     password: # chatgpt password
 
