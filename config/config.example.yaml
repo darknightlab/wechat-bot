@@ -21,7 +21,7 @@ chatgpt:
     method: Browser
     captchaToken: # 验证码
     enable: true
-    proxy: # http://x.x.x.x:7890
+    proxy: # x.x.x.x:7890
     timeout: 60
     isGoogleLogin: false
     username: # chatgpt username
