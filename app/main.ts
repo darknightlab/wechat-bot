@@ -317,6 +317,7 @@ async function getAPI() {
             });
             api = new ChatGPTAPI({ ...openAIAuth, markdown: true });
             await api.initSession();
+            await api.getIsAuthenticated();
             break;
         case "Browser":
             // method Browser
@@ -328,6 +329,7 @@ async function getAPI() {
                 captchaToken: config.chatgpt.captchaToken as string,
             });
             await api.initSession();
+            await api.getIsAuthenticated();
             break;
         default: // default method is Browser
             // method Browser
@@ -339,6 +341,7 @@ async function getAPI() {
                 captchaToken: config.chatgpt.captchaToken as string,
             });
             await api.initSession();
+            await api.getIsAuthenticated();
             break;
     }
     return api;
@@ -511,12 +514,18 @@ async function onMessage(msg: Message) {
                     await msg.say(resp.response);
                 } catch (e: any) {
                     switch (e.message) {
+                        case "ChatGPTAPI error 403":
+                            await chatGPT.refreshSession();
+                            await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息");
+
                         case "ChatGPT failed to refresh auth token. Error: session token may have expired":
+                            // 不知道新版还有没有这个错误, 待删除
                             await chatGPT.resetSession();
                             await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息");
                             break;
 
                         case "ChatGPT failed to refresh auth token. Error: Unauthorized":
+                            // 不知道新版还有没有这个错误, 待删除
                             await chatGPT.resetSession();
                             await msg.say("Session Token出错, 正在尝试刷新Session Token, 请重新发送消息");
                             break;
