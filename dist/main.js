@@ -150,12 +150,12 @@ async function cmd_chatgpt(args, msg) {
                 break;
             default:
                 // 命令错误
-                await msg.say("chatgpt [clear|reset|enable|disable]");
+                await msg.say("/chatgpt [clear|reset|enable|disable]");
                 break;
         }
     }
     else {
-        await msg.say("chatgpt [clear|reset|enable|disable]");
+        await msg.say("/chatgpt [clear|reset|enable|disable]");
     }
 }
 async function cmd_archive(args, msg) {
@@ -168,7 +168,7 @@ async function cmd_archive(args, msg) {
                 ContactOptions.get(msg.talker().id).archivebox.enable = false;
                 break;
             default:
-                await msg.say("archive [enable|disable]");
+                await msg.say("/archive [enable|disable]");
                 break;
         }
     }
@@ -183,7 +183,7 @@ async function cmd_animepic(args, msg) {
                 ContactOptions.get(msg.talker().id).animepic.enable = false;
                 break;
             default:
-                await msg.say("animepic [enable|disable]");
+                await msg.say("/animepic [enable|disable]");
                 break;
         }
     }
@@ -460,8 +460,9 @@ async function onMessage(msg) {
                 catch (e) {
                     switch (e.message) {
                         case "ChatGPTAPI error 403":
-                            await chatGPT.refreshSession();
-                            await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息");
+                            let token = await chatGPT.refreshSession();
+                            await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息. token: " + token);
+                            break;
                         case "ChatGPT failed to refresh auth token. Error: session token may have expired":
                             // 不知道新版还有没有这个错误, 待删除
                             await chatGPT.resetSession();

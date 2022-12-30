@@ -33,4 +33,4 @@ RUN mkdir config && touch config/wechat-bot.memory-card.json && \
 
 ENTRYPOINT [ "/usr/bin/xvfb-run" ]
 
-CMD [ "npm", "start" ]
+CMD [ "--auto-servernum", "npm", "start" ]
