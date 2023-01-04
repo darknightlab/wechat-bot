@@ -94,8 +94,8 @@ function isAuthed(id: string) {
 }
 
 function msgFromFriend(msg: Message) {
-    let notFriend = ["微信安全中心", "文件传输助手", "朋友推荐消息", "微信支付", "服务通知", "微信团队"];
-    return !msg.self() && !msg.room() && !notFriend.includes(msg.talker().name()) && msg.talker().friend();
+    // let notFriend = ["微信安全中心", "文件传输助手", "朋友推荐消息", "微信支付", "服务通知", "微信团队"];
+    return !msg.self() && !msg.room() && msg.talker().type() == bot.Contact.Type.Individual && msg.talker().friend(); // && !notFriend.includes(msg.talker().name())
 }
 
 function nextMessage(one: Contact) {
