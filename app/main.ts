@@ -374,11 +374,11 @@ async function getMessageById(id: string) {
 async function upsertMessage(message: ChatMessage) {
     MessageMap.set(message.id, message);
     // dump
-    fs.writeFileSync(`${APPNAME}.message.chatgpt.json`, JSON.stringify(MessageMap.toJSON()));
+    fs.writeFileSync(`config/${APPNAME}.message.chatgpt.json`, JSON.stringify(MessageMap.toJSON()));
 }
 
 function dumpConversationTmpl() {
-    fs.writeFileSync(`${APPNAME}.template.chatgpt.json`, JSON.stringify(conversationTmpls.toJSON()));
+    fs.writeFileSync(`config/${APPNAME}.template.chatgpt.json`, JSON.stringify(conversationTmpls.toJSON()));
 }
 
 // 储存ChatGPTSession到文本
@@ -397,14 +397,14 @@ function dumpChatGPTSession() {
         account: bot.currentUser.name(),
         session: session,
     });
-    fs.writeFileSync(`${APPNAME}.session.chatgpt.json`, str);
+    fs.writeFileSync(`config/${APPNAME}.session.chatgpt.json`, str);
 }
 
 // 恢复所有有关ChatGPT的数据
 async function loadChatGPT(api: ChatGPTAPI = chatGPT) {
     // session
     try {
-        let str = fs.readFileSync(`${APPNAME}.session.chatgpt.json`).toString("utf8");
+        let str = fs.readFileSync(`config/${APPNAME}.session.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
         if (obj.account == bot.currentUser.name()) {
             let session: Conversation[] = obj.session;
@@ -446,7 +446,7 @@ async function loadChatGPT(api: ChatGPTAPI = chatGPT) {
     }
     // message
     try {
-        let str = fs.readFileSync(`${APPNAME}.message.chatgpt.json`).toString("utf8");
+        let str = fs.readFileSync(`config/${APPNAME}.message.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
         MessageMap = new TSMap<string, ChatMessage>().fromJSON(obj);
     } catch (e: any) {
@@ -454,7 +454,7 @@ async function loadChatGPT(api: ChatGPTAPI = chatGPT) {
     }
     // template
     try {
-        let str = fs.readFileSync(`${APPNAME}.template.chatgpt.json`).toString("utf8");
+        let str = fs.readFileSync(`config/${APPNAME}.template.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
         conversationTmpls = new TSMap<string, ConversationTmpl>().fromJSON(obj);
     } catch (e: any) {

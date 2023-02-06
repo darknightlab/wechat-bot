@@ -147,7 +147,7 @@ async function cmd_chatgpt(args, msg) {
             case "recover": // 恢复chatgpt会话
                 if (args.length == 2) {
                     let name = args[1];
-                    let tmpl = conversationTmpl.get(name);
+                    let tmpl = conversationTmpls.get(name);
                     if (!tmpl) {
                         await msg.say(`未找到会话模板: ${name}`);
                     }
@@ -157,8 +157,9 @@ async function cmd_chatgpt(args, msg) {
                     let session = ChatGPTSession.get(wechatConversation.id);
                     session.conversationId = tmpl.convesationId;
                     session.messageIdList = tmpl.messageIdList;
-                    msg.say("恢复成功");
+                    await msg.say("恢复成功");
                 }
+                break;
             case "save": // 储存chatgpt会话
                 if (args.length == 2) {
                     let name = args[1];
@@ -181,11 +182,23 @@ async function cmd_chatgpt(args, msg) {
                         messageIdList: session.messageIdList,
                         messageMap: getMessageMapOfConversation(),
                     };
-                    conversationTmpl.set(name, tmpl);
+                    conversationTmpls.set(name, tmpl);
                     dumpConversationTmpl();
                     await msg.say("已保存");
                 }
                 break;
+            case "tmpl":
+                if (args.length == 2) {
+                    // 列出模板
+                    if (args[1] === "list") {
+                        let res = "";
+                        conversationTmpls.forEach((tmpl, name) => {
+                            res += name + " ";
+                        });
+                        res = res.trim();
+                        await msg.say(res);
+                    }
+                }
             case "disable":
                 // 已经确定WechatConversationOptions存在id
                 WechatConversationOptions.get(wechatConversation.id).chatgpt.enable = false;
@@ -291,17 +304,17 @@ let chatGPT = new ChatGPTAPI({
 });
 let ChatGPTSession = new Map();
 let MessageMap = new TSMap();
-let conversationTmpl = new TSMap();
+let conversationTmpls = new TSMap();
 async function getMessageById(id) {
     return MessageMap.get(id);
 }
 async function upsertMessage(message) {
     MessageMap.set(message.id, message);
     // dump
-    fs.writeFileSync(`${APPNAME}.message.chatgpt.json`, JSON.stringify(MessageMap.toJSON()));
+    fs.writeFileSync(`config/${APPNAME}.message.chatgpt.json`, JSON.stringify(MessageMap.toJSON()));
 }
 function dumpConversationTmpl() {
-    fs.writeFileSync(`${APPNAME}.tmplate.chatgpt.json`, JSON.stringify(conversationTmpl.toJSON()));
+    fs.writeFileSync(`config/${APPNAME}.template.chatgpt.json`, JSON.stringify(conversationTmpls.toJSON()));
 }
 // 储存ChatGPTSession到文本
 function dumpChatGPTSession() {
@@ -319,13 +332,13 @@ function dumpChatGPTSession() {
         account: bot.currentUser.name(),
         session: session,
     });
-    fs.writeFileSync(`${APPNAME}.session.chatgpt.json`, str);
+    fs.writeFileSync(`config/${APPNAME}.session.chatgpt.json`, str);
 }
 // 恢复所有有关ChatGPT的数据
 async function loadChatGPT(api = chatGPT) {
     // session
     try {
-        let str = fs.readFileSync(`${APPNAME}.session.chatgpt.json`).toString("utf8");
+        let str = fs.readFileSync(`config/${APPNAME}.session.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
         if (obj.account == bot.currentUser.name()) {
             let session = obj.session;
@@ -371,7 +384,7 @@ async function loadChatGPT(api = chatGPT) {
     }
     // message
     try {
-        let str = fs.readFileSync(`${APPNAME}.message.chatgpt.json`).toString("utf8");
+        let str = fs.readFileSync(`config/${APPNAME}.message.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
         MessageMap = new TSMap().fromJSON(obj);
     }
@@ -380,9 +393,9 @@ async function loadChatGPT(api = chatGPT) {
     }
     // template
     try {
-        let str = fs.readFileSync(`${APPNAME}.tmplate.chatgpt.json`).toString("utf8");
+        let str = fs.readFileSync(`config/${APPNAME}.template.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
-        conversationTmpl = new TSMap().fromJSON(obj);
+        conversationTmpls = new TSMap().fromJSON(obj);
     }
     catch (e) {
         log.info("ChatGPT", e.message);
