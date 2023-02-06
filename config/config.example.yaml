@@ -18,15 +18,9 @@ email:
     interval: 600 # 每600s最多发送一封邮件, 防止封号
 
 chatgpt:
-    method: Browser
-    captchaToken: # 验证码
     enable: true
-    proxy: # x.x.x.x:7890
+    apiKey: # openai apikey
     timeout: 60
-    isGoogleLogin: false
-    isMicrosoftLogin: false
-    username: # chatgpt username
-    password: # chatgpt password
 
 animepic:
     enable: true

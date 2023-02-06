@@ -11,7 +11,7 @@ import { Contact, Message, ScanStatus, WechatyBuilder, log, Friendship } from "w
 import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
 import { decode } from "html-entities";
 import { execSync, spawn } from "node:child_process";
-import { ChatGPTAPI, ChatGPTAPIBrowser, getOpenAIAuth, SendMessageOptions, ChatResponse } from "chatgpt";
+import { ChatGPTAPI, ChatMessage, SendMessageOptions } from "chatgpt";
 
 type ContactOption = {
     chatgpt: {
@@ -149,19 +149,19 @@ async function cmd_chatgpt(args: string[], msg: Message) {
                 ChatGPTSession.set(msg.talker().id, getConversation(chatGPT));
                 break;
 
-            case "reset": // 需要认证
-                if (!isAuthed(msg.talker().id)) {
-                    await msg.say("未认证, 请输入/auth [password]进行认证");
-                    break;
-                }
-                // 成功则是重置成功, 不成功则是报错信息
-                try {
-                    await chatGPT.resetSession();
-                    msg.say("重置成功");
-                } catch (e: any) {
-                    await msg.say(e.message);
-                }
-                break;
+            // case "reset": // 需要认证
+            //     if (!isAuthed(msg.talker().id)) {
+            //         await msg.say("未认证, 请输入/auth [password]进行认证");
+            //         break;
+            //     }
+            //     // 成功则是重置成功, 不成功则是报错信息
+            //     try {
+            //         await chatGPT.resetSession();
+            //         msg.say("重置成功");
+            //     } catch (e: any) {
+            //         await msg.say(e.message);
+            //     }
+            //     break;
 
             case "disable":
                 // 已经确定contactoptions存在id
@@ -178,11 +178,11 @@ async function cmd_chatgpt(args: string[], msg: Message) {
 
             default:
                 // 命令错误
-                await msg.say("/chatgpt [clear|reset|enable|disable]");
+                await msg.say("/chatgpt [clear|enable|disable]");
                 break;
         }
     } else {
-        await msg.say("/chatgpt [clear|reset|enable|disable]");
+        await msg.say("/chatgpt [clear|enable|disable]");
     }
 }
 
@@ -270,18 +270,20 @@ async function send2Archive(url: string) {
 
 // ChatGPT
 
-let chatGPT = await getAPI();
+let chatGPT = new ChatGPTAPI({
+    apiKey: config.chatgpt.apiKey,
+});
 let ChatGPTSession: Map<string, ChatGPTConversation> = new Map();
 
-function getConversation(api: ChatGPTAPI | ChatGPTAPIBrowser) {
+function getConversation(api: ChatGPTAPI) {
     return new ChatGPTConversation(api);
 }
 
 class ChatGPTConversation {
     conversationId: string | undefined = undefined;
     messageIdList: string[];
-    _api: ChatGPTAPI | ChatGPTAPIBrowser;
-    constructor(api: ChatGPTAPI | ChatGPTAPIBrowser) {
+    _api: ChatGPTAPI;
+    constructor(api: ChatGPTAPI) {
         this._api = api;
         this.messageIdList = [];
     }
@@ -294,7 +296,7 @@ class ChatGPTConversation {
             opts.parentMessageId = this.messageIdList[this.messageIdList.length - 1];
         }
         let response = await this._api.sendMessage(message, opts);
-        this.messageIdList.push(response.messageId);
+        this.messageIdList.push(response.id);
         if (!this.conversationId) {
             this.conversationId = response.conversationId;
         }
@@ -302,57 +304,9 @@ class ChatGPTConversation {
     }
 }
 
-async function getAPI() {
-    let method = config.chatgpt.method as string;
-    let api: ChatGPTAPI | ChatGPTAPIBrowser;
-    switch (method) {
-        case "OpenAIAuth":
-            // method getOpenAIAuth
-            let openAIAuth = await getOpenAIAuth({
-                email: config.chatgpt.username as string,
-                password: config.chatgpt.password as string,
-                isGoogleLogin: config.chatgpt.isGoogleLogin as boolean,
-                isMicrosoftLogin: config.chatgpt.isMicrosoftLogin as boolean,
-                proxyServer: config.chatgpt.proxy as string,
-                captchaToken: config.chatgpt.captchaToken as string,
-            });
-            api = new ChatGPTAPI({ ...openAIAuth, markdown: true });
-            await api.initSession();
-            await api.getIsAuthenticated();
-            break;
-        case "Browser":
-            // method Browser
-            api = new ChatGPTAPIBrowser({
-                email: config.chatgpt.username as string,
-                password: config.chatgpt.password as string,
-                isGoogleLogin: config.chatgpt.isGoogleLogin as boolean,
-                isMicrosoftLogin: config.chatgpt.isMicrosoftLogin as boolean,
-                proxyServer: config.chatgpt.proxy as string,
-                captchaToken: config.chatgpt.captchaToken as string,
-            });
-            await api.initSession();
-            await api.getIsAuthenticated();
-            break;
-        default: // default method is Browser
-            // method Browser
-            api = new ChatGPTAPIBrowser({
-                email: config.chatgpt.username as string,
-                password: config.chatgpt.password as string,
-                isGoogleLogin: config.chatgpt.isGoogleLogin as boolean,
-                isMicrosoftLogin: config.chatgpt.isMicrosoftLogin as boolean,
-                proxyServer: config.chatgpt.proxy as string,
-                captchaToken: config.chatgpt.captchaToken as string,
-            });
-            await api.initSession();
-            await api.getIsAuthenticated();
-            break;
-    }
-    return api;
-}
-
 // Wechaty 事件
 
-function onScan(qrcode: string, status: ScanStatus) {
+async function onScan(qrcode: string, status: ScanStatus) {
     if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
         const qrcodeImageUrl = [config.wechat.qrcodeAPI, encodeURIComponent(qrcode)].join("");
         log.info("StarterBot", "onScan: %s(%s) - %s", ScanStatus[status], status, qrcodeImageUrl);
@@ -360,7 +314,7 @@ function onScan(qrcode: string, status: ScanStatus) {
         // 如果到达允许的邮件间隔时间, 发送二维码邮件
         try {
             if (new Date().getTime() - LastMailTime.getTime() > config.email.interval * 1000) {
-                transporter.sendMail({
+                await transporter.sendMail({
                     from: `"${config.email.senderName}" <${config.email.sender}>`,
                     to: config.email.receiver,
                     subject: "wechat-bot: 请扫码登录",
@@ -509,31 +463,17 @@ async function onMessage(msg: Message) {
                     ChatGPTSession.set(talker.id, getConversation(chatGPT));
                 }
                 let c = ChatGPTSession.get(talker.id)!;
-                let resp: ChatResponse;
+                let resp: ChatMessage;
                 try {
                     resp = await c.sendMessage(plainText, {
                         timeoutMs: config.chatgpt.timeout * 1000,
                     });
-                    await msg.say(resp.response);
+                    await msg.say(resp.text);
                 } catch (e: any) {
                     switch (e.message) {
-                        case "ChatGPTAPI error 403":
-                            let token = await chatGPT.refreshSession();
-                            await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息. token: " + token);
-                            break;
-
-                        case "ChatGPT failed to refresh auth token. Error: session token may have expired":
-                            // 不知道新版还有没有这个错误, 待删除
-                            await chatGPT.resetSession();
-                            await msg.say("Session Token已过期, 正在尝试刷新Session Token, 请重新发送消息");
-                            break;
-
-                        case "ChatGPT failed to refresh auth token. Error: Unauthorized":
-                            // 不知道新版还有没有这个错误, 待删除
-                            await chatGPT.resetSession();
-                            await msg.say("Session Token出错, 正在尝试刷新Session Token, 请重新发送消息");
-                            break;
-
+                        case "fetch failed":
+                            log.error(logPrefix, e);
+                            await msg.say("fetch failed, 请重新发送上一条消息");
                         default:
                             log.error(logPrefix, e);
                             await msg.say(e.message);
