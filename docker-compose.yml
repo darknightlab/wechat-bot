@@ -10,7 +10,7 @@ services:
         # build: .
         container_name: wechat-bot
         restart: always
-        init: true
+        # init: true # 似乎曾经在用浏览器方法时具有特殊意义
         environment:
             - WECHATY_LOG=verbose
         volumes:
