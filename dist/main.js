@@ -152,6 +152,7 @@ async function cmd_chatgpt(args, msg) {
                         await msg.say(`未找到会话模板: ${name}`);
                     }
                     if (!ChatGPTSession.has(wechatConversation.id)) {
+                        log.info("cmd_chatgpt", "Create new ChatGPT conversation");
                         ChatGPTSession.set(wechatConversation.id, getChatGPTConversation(chatGPT, wechatConversation));
                     }
                     let session = ChatGPTSession.get(wechatConversation.id);
@@ -501,10 +502,12 @@ async function onMessage(msg) {
     log.info(logPrefix, msg.toString());
     // 只回复StartTime之后的消息
     if (msg.date() < StartTime) {
+        log.info(logPrefix, "Message Date=%s, StartTime=%s, skip", msg.date(), StartTime);
         return;
     }
     // 只回复好友或者在群里面at自己的消息
     if (!(msgFromFriend(msg) || (msgFromRoom(msg) && (await msg.mentionSelf())))) {
+        log.info(logPrefix, "Message is not from friend or from room but not mentioned self, skip");
         return;
     }
     let wechatConversation = await getWechatConversation(msg); // 实际上是Contact|Room
@@ -530,6 +533,7 @@ async function onMessage(msg) {
     switch (msg.type()) {
         // 消息属于类似公众号的美观链接
         case bot.Message.Type.Attachment:
+            log.info(logPrefix, "Message type is attachment");
             // 微信返回的xml中有很多<br/>, 所以要先去掉
             let xmlText = decode(msg.text().replace(new RegExp("<br/>", "g"), ""));
             let xmlObj = parser.parse(xmlText);
@@ -551,6 +555,7 @@ async function onMessage(msg) {
             break;
         // 消息为普通文本, 从普通文本中提取url
         case bot.Message.Type.Text:
+            log.info(logPrefix, "Message type is text");
             // 命令优先级最高, 且不会被其他功能处理
             if (await cmdInText(msg)) {
                 break;
@@ -571,6 +576,7 @@ async function onMessage(msg) {
                     if (uriObj.host.length >= 512) {
                         return;
                     }
+                    log.info(logPrefix, "Send url to archivebox: %s", url);
                     try {
                         let archiveURL = await send2Archive(url);
                         if (archiveURL) {
@@ -587,9 +593,11 @@ async function onMessage(msg) {
             if (wechatConversationOption.chatgpt.enable) {
                 // ChatGPT
                 if (!ChatGPTSession.has(wechatConversation.id)) {
+                    log.info(logPrefix, "Create new ChatGPT conversation");
                     ChatGPTSession.set(wechatConversation.id, getChatGPTConversation(chatGPT, wechatConversation));
                 }
                 let c = ChatGPTSession.get(wechatConversation.id);
+                log.info(logPrefix, "Send message to ChatGPT");
                 let resp;
                 try {
                     resp = await c.sendMessage(plainText, {
@@ -611,9 +619,11 @@ async function onMessage(msg) {
             }
             break;
         case bot.Message.Type.Video:
+            log.info(logPrefix, "Message type is video");
             break;
         // 希望用deepdanbooru识别图片内容
         case bot.Message.Type.Image:
+            log.info(logPrefix, "Message type is image");
             // animepic
             if (wechatConversationOption.animepic.enable) {
                 let imgBox = await msg.toFileBox();
