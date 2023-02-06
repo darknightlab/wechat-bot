@@ -364,8 +364,8 @@ let chatGPT = new ChatGPTAPI({
     upsertMessage: upsertMessage,
 });
 let ChatGPTSession: Map<string, ChatGPTConversation> = new Map();
-let MessageMap: TSMap<string, ChatMessage> = new TSMap();
-let conversationTmpls: TSMap<string, ConversationTmpl> = new TSMap();
+let MessageMap: TSMap<string, ChatMessage>;
+let conversationTmpls: TSMap<string, ConversationTmpl>;
 
 async function getMessageById(id: string) {
     return MessageMap.get(id)!;
@@ -460,6 +460,11 @@ async function loadChatGPT(api: ChatGPTAPI = chatGPT) {
     } catch (e: any) {
         log.info("ChatGPT", e.message);
     }
+    conversationTmpls.forEach((tmpl, name) => {
+        tmpl.messageMap.forEach((chatMessage, id) => {
+            MessageMap.set(id!, chatMessage);
+        });
+    });
 }
 
 function getChatGPTConversation(api: ChatGPTAPI, wechatC: WechatConversation) {
