@@ -156,7 +156,7 @@ async function cmd_chatgpt(args, msg) {
                     }
                     let session = ChatGPTSession.get(wechatConversation.id);
                     session.conversationId = tmpl.convesationId;
-                    session.messageIdList = tmpl.messageIdList;
+                    session.messageIdList = [...tmpl.messageIdList];
                     await msg.say("恢复成功");
                 }
                 break;
@@ -179,7 +179,7 @@ async function cmd_chatgpt(args, msg) {
                     };
                     let tmpl = {
                         convesationId: session.conversationId,
-                        messageIdList: session.messageIdList,
+                        messageIdList: [...session.messageIdList],
                         messageMap: getMessageMapOfConversation(),
                     };
                     conversationTmpls.set(name, tmpl);
