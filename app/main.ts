@@ -691,6 +691,7 @@ async function onMessage(msg: Message) {
                         case "fetch failed":
                             log.error(logPrefix, e);
                             await msg.say("fetch failed, 请重新发送上一条消息");
+                            break;
                         default:
                             log.error(logPrefix, e);
                             await msg.say(e.message);
