@@ -181,7 +181,7 @@ async function cmd_chatgpt(args: string[], msg: Message) {
             case "recover": // 恢复chatgpt会话
                 if (args.length == 2) {
                     let name = args[1];
-                    let tmpl = conversationTmpl.get(name);
+                    let tmpl = conversationTmpls.get(name);
                     if (!tmpl) {
                         await msg.say(`未找到会话模板: ${name}`);
                     }
@@ -191,7 +191,7 @@ async function cmd_chatgpt(args: string[], msg: Message) {
                     let session = ChatGPTSession.get(wechatConversation.id)!;
                     session.conversationId = tmpl.convesationId;
                     session.messageIdList = tmpl.messageIdList;
-                    msg.say("恢复成功");
+                    await msg.say("恢复成功");
                 }
                 break;
 
@@ -217,11 +217,24 @@ async function cmd_chatgpt(args: string[], msg: Message) {
                         messageIdList: session.messageIdList,
                         messageMap: getMessageMapOfConversation(),
                     };
-                    conversationTmpl.set(name, tmpl);
+                    conversationTmpls.set(name, tmpl);
                     dumpConversationTmpl();
                     await msg.say("已保存");
                 }
                 break;
+
+            case "tmpl":
+                if (args.length == 2) {
+                    // 列出模板
+                    if (args[1] === "list") {
+                        let res = "";
+                        conversationTmpls.forEach((tmpl, name) => {
+                            res += name + " ";
+                        });
+                        res = res.trim();
+                        await msg.say(res);
+                    }
+                }
 
             case "disable":
                 // 已经确定WechatConversationOptions存在id
@@ -352,7 +365,7 @@ let chatGPT = new ChatGPTAPI({
 });
 let ChatGPTSession: Map<string, ChatGPTConversation> = new Map();
 let MessageMap: TSMap<string, ChatMessage> = new TSMap();
-let conversationTmpl: TSMap<string, ConversationTmpl> = new TSMap();
+let conversationTmpls: TSMap<string, ConversationTmpl> = new TSMap();
 
 async function getMessageById(id: string) {
     return MessageMap.get(id)!;
@@ -365,7 +378,7 @@ async function upsertMessage(message: ChatMessage) {
 }
 
 function dumpConversationTmpl() {
-    fs.writeFileSync(`${APPNAME}.template.chatgpt.json`, JSON.stringify(conversationTmpl.toJSON()));
+    fs.writeFileSync(`${APPNAME}.template.chatgpt.json`, JSON.stringify(conversationTmpls.toJSON()));
 }
 
 // 储存ChatGPTSession到文本
@@ -443,7 +456,7 @@ async function loadChatGPT(api: ChatGPTAPI = chatGPT) {
     try {
         let str = fs.readFileSync(`${APPNAME}.template.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
-        conversationTmpl = new TSMap<string, ConversationTmpl>().fromJSON(obj);
+        conversationTmpls = new TSMap<string, ConversationTmpl>().fromJSON(obj);
     } catch (e: any) {
         log.info("ChatGPT", e.message);
     }
