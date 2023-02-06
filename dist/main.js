@@ -2,6 +2,7 @@ import fs from "fs";
 import axios from "axios";
 import FormData from "form-data";
 import YAML from "yaml";
+import { TSMap } from "typescript-map";
 import urlRegexSafe from "url-regex-safe";
 import qrcodeTerminal from "qrcode-terminal";
 import schedule from "node-schedule";
@@ -39,6 +40,7 @@ const parser = new XMLParser();
 const configPath = "./config/config.yaml";
 const config = YAML.parse(fs.readFileSync(configPath, "utf8"));
 // Wechat
+const APPNAME = "wechat-bot";
 const Command = new Map([
     ["chatgpt", cmd_chatgpt],
     ["auth", cmd_auth],
@@ -46,12 +48,13 @@ const Command = new Map([
     ["animepic", cmd_animepic],
     ["test", cmd_test],
 ]);
+let StartTime = new Date();
 let MyWeChat;
 let AuthedID = new Set();
 let Jobs = new Map();
 let MsgQueue = new Map();
-let ContactOptions = new Map();
-let DefaultContactOption = {
+let WechatConversationOptions = new Map();
+let DefaultWechatConversationOption = {
     chatgpt: {
         enable: config.chatgpt.enable,
     },
@@ -68,9 +71,23 @@ async function middleware(msg) {
 function isAuthed(id) {
     return AuthedID.has(id);
 }
+async function getWechatConversation(msg) {
+    let id = msg.room() ? msg.room().id : msg.talker().id;
+    let name = msg.room() ? await msg.room().topic() : msg.talker().name();
+    let type = msg.room() ? "room" : "contact";
+    let res = {
+        id: id,
+        name: name,
+        type: type,
+    };
+    return res;
+}
 function msgFromFriend(msg) {
     // let notFriend = ["微信安全中心", "文件传输助手", "朋友推荐消息", "微信支付", "服务通知", "微信团队"];
     return !msg.self() && !msg.room() && msg.talker().type() == bot.Contact.Type.Individual && msg.talker().friend(); // && !notFriend.includes(msg.talker().name())
+}
+function msgFromRoom(msg) {
+    return !msg.self() && msg.room();
 }
 function nextMessage(one) {
     // 如果不存在该联系人的队列, 用id创建一个.
@@ -84,7 +101,7 @@ function nextMessage(one) {
 }
 // 检测文本是否包含命令
 async function cmdInText(msg) {
-    let text = msg.text();
+    let text = await msg.mentionText();
     let textList = text.split(" ");
     if (textList[0].startsWith("/")) {
         let cmd = textList[0].slice(1);
@@ -104,6 +121,7 @@ async function cmdInText(msg) {
     return false;
 }
 async function cmd_auth(args, msg) {
+    // 认证用个人, 群组不行
     if (AuthedID.has(msg.talker().id)) {
         await msg.say("已认证");
     }
@@ -118,53 +136,86 @@ async function cmd_auth(args, msg) {
     }
 }
 async function cmd_chatgpt(args, msg) {
+    let wechatConversation = await getWechatConversation(msg);
     if (args.length > 0) {
         switch (args[0]) {
             case "clear":
-                ChatGPTSession.set(msg.talker().id, getConversation(chatGPT));
+                ChatGPTSession.set(wechatConversation.id, getChatGPTConversation(chatGPT, wechatConversation));
+                dumpChatGPTSession();
+                await msg.say("已清空聊天记录");
                 break;
-            // case "reset": // 需要认证
-            //     if (!isAuthed(msg.talker().id)) {
-            //         await msg.say("未认证, 请输入/auth [password]进行认证");
-            //         break;
-            //     }
-            //     // 成功则是重置成功, 不成功则是报错信息
-            //     try {
-            //         await chatGPT.resetSession();
-            //         msg.say("重置成功");
-            //     } catch (e: any) {
-            //         await msg.say(e.message);
-            //     }
-            //     break;
+            case "recover": // 恢复chatgpt会话
+                if (args.length == 2) {
+                    let name = args[1];
+                    let tmpl = conversationTmpl.get(name);
+                    if (!tmpl) {
+                        await msg.say(`未找到会话模板: ${name}`);
+                    }
+                    if (!ChatGPTSession.has(wechatConversation.id)) {
+                        ChatGPTSession.set(wechatConversation.id, getChatGPTConversation(chatGPT, wechatConversation));
+                    }
+                    let session = ChatGPTSession.get(wechatConversation.id);
+                    session.conversationId = tmpl.convesationId;
+                    session.messageIdList = tmpl.messageIdList;
+                    msg.say("恢复成功");
+                }
+            case "save": // 储存chatgpt会话
+                if (args.length == 2) {
+                    let name = args[1];
+                    let session = ChatGPTSession.get(wechatConversation.id);
+                    if (!session || !session.conversationId) {
+                        await msg.say("还未进行有效的对话");
+                        break;
+                    }
+                    let getMessageMapOfConversation = () => {
+                        let res = new TSMap();
+                        session.messageIdList.forEach((messageId) => {
+                            let chatMessage = MessageMap.get(messageId);
+                            res.set(messageId, chatMessage);
+                            res.set(chatMessage.parentMessageId, MessageMap.get(chatMessage.parentMessageId));
+                        });
+                        return res;
+                    };
+                    let tmpl = {
+                        convesationId: session.conversationId,
+                        messageIdList: session.messageIdList,
+                        messageMap: getMessageMapOfConversation(),
+                    };
+                    conversationTmpl.set(name, tmpl);
+                    dumpConversationTmpl();
+                    await msg.say("已保存");
+                }
+                break;
             case "disable":
-                // 已经确定contactoptions存在id
-                ContactOptions.get(msg.talker().id).chatgpt.enable = false;
-                if (ChatGPTSession.has(msg.talker().id)) {
-                    ChatGPTSession.delete(msg.talker().id);
+                // 已经确定WechatConversationOptions存在id
+                WechatConversationOptions.get(wechatConversation.id).chatgpt.enable = false;
+                if (ChatGPTSession.has(wechatConversation.id)) {
+                    ChatGPTSession.delete(wechatConversation.id);
                 }
                 break;
             case "enable":
-                // 已经确定contactoptions存在id
-                ContactOptions.get(msg.talker().id).chatgpt.enable = true;
+                // 已经确定wechatConversationOptions存在id
+                WechatConversationOptions.get(wechatConversation.id).chatgpt.enable = true;
                 break;
             default:
                 // 命令错误
-                await msg.say("/chatgpt [clear|enable|disable]");
+                await msg.say("/chatgpt [clear|recover|save|enable|disable]");
                 break;
         }
     }
     else {
-        await msg.say("/chatgpt [clear|enable|disable]");
+        await msg.say("/chatgpt [clear|recover|save|enable|disable]");
     }
 }
 async function cmd_archive(args, msg) {
+    let wechatConversation = await getWechatConversation(msg);
     if (args.length > 0) {
         switch (args[0]) {
             case "enable":
-                ContactOptions.get(msg.talker().id).archivebox.enable = true;
+                WechatConversationOptions.get(wechatConversation.id).archivebox.enable = true;
                 break;
             case "disable":
-                ContactOptions.get(msg.talker().id).archivebox.enable = false;
+                WechatConversationOptions.get(wechatConversation.id).archivebox.enable = false;
                 break;
             default:
                 await msg.say("/archive [enable|disable]");
@@ -173,13 +224,14 @@ async function cmd_archive(args, msg) {
     }
 }
 async function cmd_animepic(args, msg) {
+    let wechatConversation = await getWechatConversation(msg);
     if (args.length > 0) {
         switch (args[0]) {
             case "enable":
-                ContactOptions.get(msg.talker().id).animepic.enable = true;
+                WechatConversationOptions.get(wechatConversation.id).animepic.enable = true;
                 break;
             case "disable":
-                ContactOptions.get(msg.talker().id).animepic.enable = false;
+                WechatConversationOptions.get(wechatConversation.id).animepic.enable = false;
                 break;
             default:
                 await msg.say("/animepic [enable|disable]");
@@ -188,8 +240,9 @@ async function cmd_animepic(args, msg) {
     }
 }
 async function cmd_test(args, msg) {
+    let wechatConversation = await getWechatConversation(msg);
     await msg.say("请在下一条消息中发送任意内容");
-    let nextMsg = await nextMessage(msg.talker()).result();
+    let nextMsg = await nextMessage(wechatConversation).result();
     await msg.say(nextMsg.text());
 }
 // Mailer
@@ -231,26 +284,128 @@ async function send2Archive(url) {
         return null;
     }
 }
-// ChatGPT
 let chatGPT = new ChatGPTAPI({
     apiKey: config.chatgpt.apiKey,
+    getMessageById: getMessageById,
+    upsertMessage: upsertMessage,
 });
 let ChatGPTSession = new Map();
-function getConversation(api) {
-    return new ChatGPTConversation(api);
+let MessageMap = new TSMap();
+let conversationTmpl = new TSMap();
+async function getMessageById(id) {
+    return MessageMap.get(id);
+}
+async function upsertMessage(message) {
+    MessageMap.set(message.id, message);
+    // dump
+    fs.writeFileSync(`${APPNAME}.message.chatgpt.json`, JSON.stringify(MessageMap.toJSON()));
+}
+function dumpConversationTmpl() {
+    fs.writeFileSync(`${APPNAME}.tmplate.chatgpt.json`, JSON.stringify(conversationTmpl.toJSON()));
+}
+// 储存ChatGPTSession到文本
+function dumpChatGPTSession() {
+    // session
+    // chatgptsession是id到对话的映射, 而存储到json后是包含id和名字的数组. chatgptconversation当中还含有联系人的名字. 恢复时利用名字恢复.
+    let session = [];
+    ChatGPTSession.forEach((v) => {
+        session.push({
+            wechatConversation: v.wechatConversation,
+            conversationId: v.conversationId,
+            messageIdList: v.messageIdList,
+        });
+    });
+    let str = JSON.stringify({
+        account: bot.currentUser.name(),
+        session: session,
+    });
+    fs.writeFileSync(`${APPNAME}.session.chatgpt.json`, str);
+}
+// 恢复所有有关ChatGPT的数据
+async function loadChatGPT(api = chatGPT) {
+    // session
+    try {
+        let str = fs.readFileSync(`${APPNAME}.session.chatgpt.json`).toString("utf8");
+        let obj = JSON.parse(str);
+        if (obj.account == bot.currentUser.name()) {
+            let session = obj.session;
+            session.forEach(async (v) => {
+                let c = new ChatGPTConversation(api, v.wechatConversation);
+                c.conversationId = v.conversationId;
+                c.messageIdList = v.messageIdList;
+                if (v.wechatConversation.type == "contact") {
+                    let contacts = await bot.Contact.findAll({ name: v.wechatConversation.name });
+                    if (contacts.length == 1) {
+                        ChatGPTSession.set(contacts[0].id, c);
+                    }
+                    else {
+                        contacts.forEach((contact) => {
+                            if (contact.id == v.wechatConversation.id) {
+                                // 如果有多个同名联系人且是padlocal, 则可以使用contactId来区分
+                                ChatGPTSession.set(contact.id, c);
+                            }
+                        });
+                        log.warn("ChatGPT", `无法找到或有多个同名联系人${v.wechatConversation.name}, 会话无法恢复`);
+                    }
+                }
+                else if (v.wechatConversation.type == "room") {
+                    let rooms = await bot.Room.findAll({ topic: v.wechatConversation.name });
+                    if (rooms.length == 1) {
+                        ChatGPTSession.set(rooms[0].id, c);
+                    }
+                    else {
+                        rooms.forEach((room) => {
+                            if (room.id == v.wechatConversation.id) {
+                                // 如果有多个同名群且是padlocal, 则可以使用roomId来区分
+                                ChatGPTSession.set(room.id, c);
+                            }
+                        });
+                        log.warn("ChatGPT", `无法找到或有多个同名群${v.wechatConversation.name}, 会话无法恢复`);
+                    }
+                }
+            });
+        }
+    }
+    catch (e) {
+        log.info("ChatGPT", e.message);
+    }
+    // message
+    try {
+        let str = fs.readFileSync(`${APPNAME}.message.chatgpt.json`).toString("utf8");
+        let obj = JSON.parse(str);
+        MessageMap = new TSMap().fromJSON(obj);
+    }
+    catch (e) {
+        log.info("ChatGPT", e.message);
+    }
+    // template
+    try {
+        let str = fs.readFileSync(`${APPNAME}.tmplate.chatgpt.json`).toString("utf8");
+        let obj = JSON.parse(str);
+        conversationTmpl = new TSMap().fromJSON(obj);
+    }
+    catch (e) {
+        log.info("ChatGPT", e.message);
+    }
+}
+function getChatGPTConversation(api, wechatC) {
+    return new ChatGPTConversation(api, wechatC);
 }
 class ChatGPTConversation {
+    wechatConversation;
     conversationId = undefined;
     messageIdList;
     _api;
-    constructor(api) {
+    constructor(api, wechatC) {
         this._api = api;
+        this.wechatConversation = wechatC;
         this.messageIdList = [];
     }
     async sendMessage(message, opts = {}) {
         if (this.conversationId && !opts.conversationId) {
             opts.conversationId = this.conversationId;
         }
+        // 这里的逻辑是, 当群聊中有两个人在很接近的时间之内连发两条消息, 则他们都以这之前的最后一条ai消息作为上文.
         if (this.messageIdList.length > 0 && !opts.parentMessageId) {
             opts.parentMessageId = this.messageIdList[this.messageIdList.length - 1];
         }
@@ -259,6 +414,7 @@ class ChatGPTConversation {
         if (!this.conversationId) {
             this.conversationId = response.conversationId;
         }
+        dumpChatGPTSession();
         return response;
     }
 }
@@ -295,6 +451,7 @@ async function onLogin(user) {
 }
 async function onReady() {
     log.info("StarterBot", "bot is ready");
+    loadChatGPT(chatGPT);
     MyWeChat = await bot.Contact.find(config.wechat.myaccount);
     if (!MyWeChat) {
         throw new Error(`Account ${config.wechat.myaccount} not found`);
@@ -317,28 +474,33 @@ function onLogout(user) {
 async function onMessage(msg) {
     let logPrefix = "Message";
     log.info(logPrefix, msg.toString());
-    // 只回复好友的消息
-    if (!msgFromFriend(msg)) {
+    // 只回复StartTime之后的消息
+    if (msg.date() < StartTime) {
         return;
     }
-    let talker = msg.talker();
+    // 只回复好友或者在群里面at自己的消息
+    if (!(msgFromFriend(msg) || (msgFromRoom(msg) && (await msg.mentionSelf())))) {
+        return;
+    }
+    let wechatConversation = await getWechatConversation(msg); // 实际上是Contact|Room
+    let msgText = await msg.mentionText();
     // 优先级高于命令!! 例如在等待消息的过程中, 尽管接收到的是disable的命令, 也会因为这里的return而跳过.
     // 如果有等待消息的队列, 则捕捉消息
-    if (MsgQueue.has(talker.id)) {
-        let queue = MsgQueue.get(talker.id);
+    if (MsgQueue.has(wechatConversation.id)) {
+        let queue = MsgQueue.get(wechatConversation.id);
         if (queue.length > 0) {
             let p = queue.shift();
             p.resolve(msg);
             return;
         }
     }
-    let contactOption;
-    if (ContactOptions.has(talker.id)) {
-        contactOption = ContactOptions.get(talker.id);
+    let wechatConversationOption;
+    if (WechatConversationOptions.has(wechatConversation.id)) {
+        wechatConversationOption = WechatConversationOptions.get(wechatConversation.id);
     }
     else {
-        contactOption = DefaultContactOption;
-        ContactOptions.set(talker.id, contactOption);
+        wechatConversationOption = DefaultWechatConversationOption;
+        WechatConversationOptions.set(wechatConversation.id, wechatConversationOption);
     }
     switch (msg.type()) {
         // 消息属于类似公众号的美观链接
@@ -347,7 +509,7 @@ async function onMessage(msg) {
             let xmlText = decode(msg.text().replace(new RegExp("<br/>", "g"), ""));
             let xmlObj = parser.parse(xmlText);
             // archivebox
-            if (contactOption.archivebox.enable) {
+            if (wechatConversationOption.archivebox.enable) {
                 try {
                     let url;
                     url = xmlObj.msg.appmsg.url;
@@ -369,9 +531,9 @@ async function onMessage(msg) {
                 break;
             }
             //去掉所有的html标记
-            let plainText = msg.text().replace(/<[^>]+>/g, " ");
+            let plainText = msgText.replace(/<[^>]+>/g, " ");
             // archivebox
-            if (contactOption.archivebox.enable) {
+            if (wechatConversationOption.archivebox.enable) {
                 // 数组去重
                 let urls = new Set(plainText.match(urlRegexSafe()));
                 urls.forEach(async (url) => {
@@ -397,13 +559,12 @@ async function onMessage(msg) {
                 });
             }
             // ChatGPT
-            if (contactOption.chatgpt.enable) {
+            if (wechatConversationOption.chatgpt.enable) {
                 // ChatGPT
-                if (!ChatGPTSession.has(talker.id)) {
-                    // getConversation or chatGPT.getConversation() 等待ChatGPTAPIBrowser实现getConversation方法
-                    ChatGPTSession.set(talker.id, getConversation(chatGPT));
+                if (!ChatGPTSession.has(wechatConversation.id)) {
+                    ChatGPTSession.set(wechatConversation.id, getChatGPTConversation(chatGPT, wechatConversation));
                 }
-                let c = ChatGPTSession.get(talker.id);
+                let c = ChatGPTSession.get(wechatConversation.id);
                 let resp;
                 try {
                     resp = await c.sendMessage(plainText, {
@@ -429,7 +590,7 @@ async function onMessage(msg) {
         // 希望用deepdanbooru识别图片内容
         case bot.Message.Type.Image:
             // animepic
-            if (contactOption.animepic.enable) {
+            if (wechatConversationOption.animepic.enable) {
                 let imgBox = await msg.toFileBox();
                 let img = await imgBox.toStream();
                 let formdata = new FormData();
@@ -490,7 +651,7 @@ async function onFriendship(friendship) {
     }
 }
 const bot = WechatyBuilder.build({
-    name: "wechat-bot",
+    name: APPNAME,
     puppet: "wechaty-puppet-wechat",
     puppetOptions: {
         uos: true, // 开启uos协议

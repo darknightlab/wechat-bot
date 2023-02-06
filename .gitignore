@@ -6,4 +6,5 @@ node_modules
 
 **/config.yaml
 *.memory-card.json
+*.chatgpt.json
 *.map
