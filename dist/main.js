@@ -395,11 +395,23 @@ async function loadChatGPT(api = chatGPT) {
     try {
         let str = fs.readFileSync(`config/${APPNAME}.template.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
-        conversationTmpls = new TSMap().fromJSON(obj);
+        Object.keys(obj).forEach((name) => {
+            let tmpl = {
+                convesationId: obj[name].convesationId,
+                messageIdList: obj[name].messageIdList,
+                messageMap: new TSMap().fromJSON(obj[name].messageMap),
+            };
+            conversationTmpls.set(name, tmpl);
+        });
     }
     catch (e) {
         log.info("ChatGPT", e.message);
     }
+    conversationTmpls.forEach((tmpl, name) => {
+        tmpl.messageMap.forEach((chatMessage, id) => {
+            MessageMap.set(id, chatMessage);
+        });
+    });
 }
 function getChatGPTConversation(api, wechatC) {
     return new ChatGPTConversation(api, wechatC);

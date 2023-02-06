@@ -364,8 +364,8 @@ let chatGPT = new ChatGPTAPI({
     upsertMessage: upsertMessage,
 });
 let ChatGPTSession: Map<string, ChatGPTConversation> = new Map();
-let MessageMap: TSMap<string, ChatMessage>;
-let conversationTmpls: TSMap<string, ConversationTmpl>;
+let MessageMap: TSMap<string, ChatMessage> = new TSMap();
+let conversationTmpls: TSMap<string, ConversationTmpl> = new TSMap();
 
 async function getMessageById(id: string) {
     return MessageMap.get(id)!;
@@ -456,7 +456,14 @@ async function loadChatGPT(api: ChatGPTAPI = chatGPT) {
     try {
         let str = fs.readFileSync(`config/${APPNAME}.template.chatgpt.json`).toString("utf8");
         let obj = JSON.parse(str);
-        conversationTmpls = new TSMap<string, ConversationTmpl>().fromJSON(obj);
+        Object.keys(obj).forEach((name) => {
+            let tmpl: ConversationTmpl = {
+                convesationId: obj[name].convesationId,
+                messageIdList: obj[name].messageIdList,
+                messageMap: new TSMap<string, ChatMessage>().fromJSON(obj[name].messageMap),
+            };
+            conversationTmpls.set(name, tmpl);
+        });
     } catch (e: any) {
         log.info("ChatGPT", e.message);
     }
