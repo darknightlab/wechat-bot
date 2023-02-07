@@ -1,6 +1,7 @@
 import fs from "fs";
 import axios from "axios";
 import FormData from "form-data";
+import * as crypto from "crypto";
 import YAML from "yaml";
 import urlRegexSafe from "url-regex-safe";
 import qrcodeTerminal from "qrcode-terminal";
