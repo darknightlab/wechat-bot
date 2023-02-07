@@ -7,4 +7,5 @@ node_modules
 **/config.yaml
 *.memory-card.json
 *.chatgpt.json
+*.wechat.json
 *.map

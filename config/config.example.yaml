@@ -21,6 +21,8 @@ chatgpt:
     enable: true
     apiKey: # openai apikey
     timeout: 60
+    experiment:
+        roomRoleDefinition:
 
 animepic:
     enable: true
