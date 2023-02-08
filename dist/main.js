@@ -426,8 +426,9 @@ let chatGPT = new ChatGPTAPI({
     upsertMessage: upsertMessage,
     userLabel: config.chatgpt.userLabel,
     assistantLabel: config.chatgpt.assistantLabel,
+    maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
     completionParams: {
-        model: config.chatgpt.model || "text-chat-davinci-002-20221122",
+        model: config.chatgpt.model.name || "text-chat-davinci-002-20221122",
     },
 });
 let ChatGPTSession = new Map(); // string是WechatConversation的id, 会话可以随时重置, 但是wechat id在单次登录时永远不变
@@ -436,6 +437,66 @@ let conversationTmpls = {
     tmpl: new Map(),
     messageMap: new Map(),
 };
+class ChatGPTConversation {
+    wechatConversation;
+    conversationId;
+    messageIdList;
+    promptPrefix;
+    promptSuffix;
+    _api;
+    constructor(api, wechatC) {
+        this._api = api;
+        this.conversationId = crypto.randomUUID();
+        this.wechatConversation = wechatC;
+        wechatC.option.chatgpt.conversationId = this.conversationId;
+        this.messageIdList = [];
+    }
+    async sendMessage(message, opts = {}, roomOptions = {}) {
+        opts.conversationId = opts.conversationId || this.conversationId;
+        opts.promptPrefix = opts.promptPrefix || this.promptPrefix;
+        opts.promptSuffix = opts.promptSuffix || this.promptSuffix;
+        // 这里的逻辑是, 当群聊中有两个人在很接近的时间之内连发两条消息, 则他们都以这之前的最后一条ai消息作为上文.
+        if (this.messageIdList.length > 0 && !opts.parentMessageId) {
+            opts.parentMessageId = this.messageIdList[this.messageIdList.length - 1];
+        }
+        let newMessage = "";
+        switch (this.wechatConversation.type) {
+            case "contact":
+                newMessage = message;
+                break;
+            case "room":
+                newMessage = JSON.stringify({ name: roomOptions.name, mentionSelf: true, time: roomOptions.time, text: message });
+                break;
+        }
+        let response = await this._api.sendMessage(newMessage, opts);
+        this.messageIdList.push(response.id);
+        dumpChatGPTSession();
+        let respText;
+        switch (this.wechatConversation.type) {
+            case "contact":
+                respText = response.text;
+                break;
+            case "room":
+                let logPrefix = "ChatGPTInRoom";
+                let respJSON;
+                try {
+                    respJSON = JSON.parse(response.text);
+                    if (respJSON.send) {
+                        respText = respJSON.text;
+                    }
+                    else {
+                        log.info(logPrefix, "send==false, ChatGPT希望不作回复");
+                    }
+                }
+                catch (e) {
+                    respText = response.text;
+                    log.warn(logPrefix, "ChatGPT返回的消息不是json，已经自动转换为json");
+                }
+                break;
+        }
+        return respText;
+    }
+}
 async function getMessageById(id) {
     return MessageMap.get(id);
 }
@@ -530,12 +591,12 @@ function newChatGPTConversation(api, wechatConversation) {
             break;
         case "room":
             c.promptPrefix = `
-            你处在一个微信群中，需要和很多人聊天。
+            你处在一个微信群中，需要和很多人聊天。你的微信用户名是${bot.currentUser.name()}
             聊天的信息以json格式传递给你，其中包含了发送人名称，发送时间，是否提及你，以及内容。格式类似如下：
             '{"name": "xxx", time: "xxx", "mentionSelf": false, "text": "消息内容"}'。
             你需要回复一个json，其中包含了是否发送消息，以及发送的内容。格式必须如下：
             '{"send": true, "text": "你发送的消息"}'。
-            如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你，你可以自由选择是否回复消息。不回复的格式必须如下：
+            如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你并且你认为这条消息不是发给你的，你就不能回复。不回复的格式必须如下：
             '{"send": false}'。
             如果你想特别提醒某个人，你可以在消息中用@他的名字再加一个空格来提及他，如：@ZC 。
             ${config.chatgpt.experiment.roomRoleDefinition
@@ -544,12 +605,12 @@ function newChatGPTConversation(api, wechatConversation) {
             在消息没有提及你的情况下，你需要控制回复频率，你最多只能连续回复50%的消息，平均回复率大约为10%。
             `;
             // c.promptPrefix = `
-            // You are in a WeChat group and need to chat with many people.
+            // You are in a WeChat group and need to chat with many people. Your WeChat account name is ${bot.currentUser.name()}
             // The chat information is passed to you in json format, which includes the sender's name, sending time, whether you are mentioned, and the content. The format is similar to the following:
             // '{"name": "xxx", time: "xxx", "mentionSelf": false, "text": "message content"}'.
             // You need to reply with a json, which includes whether to send a message, and what to send. The format must be as follows:
             // '{"send": true, "text": "The message you sent"}'.
-            // If mentionSelf==true, you must reply to the message. If you mentionSelf==false, you are free to reply to the message or not. The format of the non-reply must be as follows:
+            // If the message mentions you, i.e. mentionSelf==true, you must reply to the message. If a message doesn't mention you and you don't think it was meant for you, you can't reply. The format of the non-reply must be as follows:
             // '{"send": false}'.
             // If you want to remind someone specifically, you can use @hisname followed by a space to mention him in the message, such as: @ZC How are you?.
             // ${
@@ -557,71 +618,11 @@ function newChatGPTConversation(api, wechatConversation) {
             //         ? config.chatgpt.experiment.roomRoleDefinition
             //         : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"
             // }
-            //     In the case that the message does not mention you, you need to control the reply frequency. You can only reply to 50% of the messages continuously at most, and the average reply rate is about 10%.
+            // In the case that the message does not mention you, you need to control the reply frequency. You can only reply to 50% of the messages continuously at most, and the average reply rate is about 10%.
             // `;
             break;
     }
     return c;
-}
-class ChatGPTConversation {
-    wechatConversation;
-    conversationId;
-    messageIdList;
-    promptPrefix;
-    promptSuffix;
-    _api;
-    constructor(api, wechatC) {
-        this._api = api;
-        this.conversationId = crypto.randomUUID();
-        this.wechatConversation = wechatC;
-        wechatC.option.chatgpt.conversationId = this.conversationId;
-        this.messageIdList = [];
-    }
-    async sendMessage(message, opts = {}, roomOptions = {}) {
-        opts.conversationId = opts.conversationId || this.conversationId;
-        opts.promptPrefix = opts.promptPrefix || this.promptPrefix;
-        opts.promptSuffix = opts.promptSuffix || this.promptSuffix;
-        // 这里的逻辑是, 当群聊中有两个人在很接近的时间之内连发两条消息, 则他们都以这之前的最后一条ai消息作为上文.
-        if (this.messageIdList.length > 0 && !opts.parentMessageId) {
-            opts.parentMessageId = this.messageIdList[this.messageIdList.length - 1];
-        }
-        let newMessage = "";
-        switch (this.wechatConversation.type) {
-            case "contact":
-                newMessage = message;
-                break;
-            case "room":
-                newMessage = JSON.stringify({ name: roomOptions.name, mentionSelf: true, time: roomOptions.time, text: message });
-                break;
-        }
-        let response = await this._api.sendMessage(newMessage, opts);
-        this.messageIdList.push(response.id);
-        dumpChatGPTSession();
-        let respText;
-        switch (this.wechatConversation.type) {
-            case "contact":
-                respText = response.text;
-                break;
-            case "room":
-                let logPrefix = "ChatGPTInRoom";
-                let respJSON;
-                try {
-                    respJSON = JSON.parse(response.text);
-                    if (respJSON.send) {
-                        respText = respJSON.text;
-                    }
-                    else {
-                        log.info(logPrefix, "send==false, ChatGPT希望不作回复");
-                    }
-                }
-                catch (e) {
-                    respText = response.text;
-                    log.warn(logPrefix, "ChatGPT返回的消息不是json，已经自动转换为json");
-                }
-                break;
-        }
-        return respText;
-    }
 }
 // Wechaty 事件
 async function onScan(qrcode, status) {
@@ -698,7 +699,8 @@ async function onMessage(msg) {
     }
     if (normalMessage) {
         // 只有好友或者在群里面at自己的消息才能触发一般操作
-        let msgText = await msg.mentionText();
+        // let msgText = await msg.mentionText();
+        let msgText = msg.text();
         // 优先级高于命令!! 例如在等待消息的过程中, 尽管接收到的是disable的命令, 也会因为这里的return而跳过.
         // 如果有等待消息的队列, 则捕捉消息
         if (MsgQueue.has(wechatConversation.id)) {

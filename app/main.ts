@@ -487,8 +487,9 @@ let chatGPT = new ChatGPTAPI({
     upsertMessage: upsertMessage,
     userLabel: config.chatgpt.userLabel,
     assistantLabel: config.chatgpt.assistantLabel,
+    maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
     completionParams: {
-        model: config.chatgpt.model || "text-chat-davinci-002-20221122",
+        model: config.chatgpt.model.name || "text-chat-davinci-002-20221122",
     },
 });
 let ChatGPTSession: Map<string, ChatGPTConversation> = new Map(); // string是WechatConversation的id, 会话可以随时重置, 但是wechat id在单次登录时永远不变
@@ -679,12 +680,12 @@ function newChatGPTConversation(api: ChatGPTAPI, wechatConversation: WechatConve
             break;
         case "room":
             c.promptPrefix = `
-            你处在一个微信群中，需要和很多人聊天。
+            你处在一个微信群中，需要和很多人聊天。你的微信用户名是${bot.currentUser.name()}
             聊天的信息以json格式传递给你，其中包含了发送人名称，发送时间，是否提及你，以及内容。格式类似如下：
             '{"name": "xxx", time: "xxx", "mentionSelf": false, "text": "消息内容"}'。
             你需要回复一个json，其中包含了是否发送消息，以及发送的内容。格式必须如下：
             '{"send": true, "text": "你发送的消息"}'。
-            如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你，你可以自由选择是否回复消息。不回复的格式必须如下：
+            如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你并且你认为这条消息不是发给你的，你就不能回复。不回复的格式必须如下：
             '{"send": false}'。
             如果你想特别提醒某个人，你可以在消息中用@他的名字再加一个空格来提及他，如：@ZC 。
             ${
@@ -695,12 +696,12 @@ function newChatGPTConversation(api: ChatGPTAPI, wechatConversation: WechatConve
             在消息没有提及你的情况下，你需要控制回复频率，你最多只能连续回复50%的消息，平均回复率大约为10%。
             `;
             // c.promptPrefix = `
-            // You are in a WeChat group and need to chat with many people.
+            // You are in a WeChat group and need to chat with many people. Your WeChat account name is ${bot.currentUser.name()}
             // The chat information is passed to you in json format, which includes the sender's name, sending time, whether you are mentioned, and the content. The format is similar to the following:
             // '{"name": "xxx", time: "xxx", "mentionSelf": false, "text": "message content"}'.
             // You need to reply with a json, which includes whether to send a message, and what to send. The format must be as follows:
             // '{"send": true, "text": "The message you sent"}'.
-            // If mentionSelf==true, you must reply to the message. If you mentionSelf==false, you are free to reply to the message or not. The format of the non-reply must be as follows:
+            // If the message mentions you, i.e. mentionSelf==true, you must reply to the message. If a message doesn't mention you and you don't think it was meant for you, you can't reply. The format of the non-reply must be as follows:
             // '{"send": false}'.
             // If you want to remind someone specifically, you can use @hisname followed by a space to mention him in the message, such as: @ZC How are you?.
             // ${
@@ -708,7 +709,7 @@ function newChatGPTConversation(api: ChatGPTAPI, wechatConversation: WechatConve
             //         ? config.chatgpt.experiment.roomRoleDefinition
             //         : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"
             // }
-            //     In the case that the message does not mention you, you need to control the reply frequency. You can only reply to 50% of the messages continuously at most, and the average reply rate is about 10%.
+            // In the case that the message does not mention you, you need to control the reply frequency. You can only reply to 50% of the messages continuously at most, and the average reply rate is about 10%.
             // `;
             break;
     }
@@ -805,7 +806,8 @@ async function onMessage(msg: Message) {
 
     if (normalMessage) {
         // 只有好友或者在群里面at自己的消息才能触发一般操作
-        let msgText = await msg.mentionText();
+        // let msgText = await msg.mentionText();
+        let msgText = msg.text();
 
         // 优先级高于命令!! 例如在等待消息的过程中, 尽管接收到的是disable的命令, 也会因为这里的return而跳过.
         // 如果有等待消息的队列, 则捕捉消息
@@ -1001,13 +1003,14 @@ async function onMessage(msg: Message) {
                 }
             } catch (e: any) {
                 switch (e.message) {
+                    // 因为在群里, 所以出错时不再回复
                     case "fetch failed":
                         log.error(logPrefix, e);
-                        await msg.say("fetch failed, 请重新发送上一条消息");
+                        // await msg.say("fetch failed, 请重新发送上一条消息");
                         break;
                     default:
                         log.error(logPrefix, e);
-                        await msg.say(e.message);
+                        // await msg.say(e.message);
                         break;
                 }
             }

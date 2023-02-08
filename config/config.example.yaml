@@ -21,7 +21,9 @@ chatgpt:
     enable: true
     apiKey: # openai apikey
     timeout: 60
-    model: text-davinci-003 # text-chat-davinci-002-20221122
+    model:
+        name: text-davinci-003 # text-chat-davinci-002-20221122
+        maxModelTokens: 2048
     assistantLabel: wechat-bot
     userLabel:
     experiment:
