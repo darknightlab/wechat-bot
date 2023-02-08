@@ -808,16 +808,17 @@ async function onMessage(msg) {
                         }
                     }
                     catch (e) {
-                        switch (e.message) {
-                            case "fetch failed":
-                                log.error(logPrefix, e);
-                                await msg.say("fetch failed, 请重新发送上一条消息");
-                                break;
-                            default:
-                                log.error(logPrefix, e);
-                                await msg.say(e.message);
-                                break;
+                        if (!inRoom) {
+                            switch (e.message) {
+                                case "fetch failed":
+                                    await msg.say("fetch failed, 请重新发送上一条消息");
+                                    break;
+                                default:
+                                    await msg.say(e.message);
+                                    break;
+                            }
                         }
+                        log.error(logPrefix, e);
                     }
                 }
                 break;

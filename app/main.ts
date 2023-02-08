@@ -641,7 +641,7 @@ async function loadChatGPT(api: ChatGPTAPI[] = chatGPT) {
             });
         }
     } catch (e: any) {
-        log.info("ChatGPT", e.message);
+        log.warn("ChatGPT", e.message);
     }
     // message
     try {
@@ -649,7 +649,7 @@ async function loadChatGPT(api: ChatGPTAPI[] = chatGPT) {
         let obj = JSON.parse(str);
         MessageMap = new Map<string, ChatMessage>(Object.entries(obj));
     } catch (e: any) {
-        log.info("ChatGPT", e.message);
+        log.warn("ChatGPT", e.message);
     }
     // template
     try {
@@ -667,7 +667,7 @@ async function loadChatGPT(api: ChatGPTAPI[] = chatGPT) {
             MessageMap.set(messageId, chatMessage);
         });
     } catch (e: any) {
-        log.info("ChatGPT", e.message);
+        log.warn("ChatGPT", e.message);
     }
 }
 
@@ -927,16 +927,17 @@ async function onMessage(msg: Message) {
                             // 如果是个人对话，一定可以发送消息，如果是群聊中@，理论上也一定有消息，除非chatgpt不想。所以这里一般运行不到
                         }
                     } catch (e: any) {
-                        switch (e.message) {
-                            case "fetch failed":
-                                log.error(logPrefix, e);
-                                await msg.say("fetch failed, 请重新发送上一条消息");
-                                break;
-                            default:
-                                log.error(logPrefix, e);
-                                await msg.say(e.message);
-                                break;
+                        if (!inRoom) {
+                            switch (e.message) {
+                                case "fetch failed":
+                                    await msg.say("fetch failed, 请重新发送上一条消息");
+                                    break;
+                                default:
+                                    await msg.say(e.message);
+                                    break;
+                            }
                         }
+                        log.error(logPrefix, e);
                     }
                 }
 
