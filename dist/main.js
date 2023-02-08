@@ -61,6 +61,7 @@ let DefaultWechatConversationOption = {
         enable: config.chatgpt.enable,
         conversationId: undefined,
         replyEveryoneInRoom: false,
+        customRoleToContact: false,
     },
     archivebox: {
         enable: config.archive.enable,
@@ -208,27 +209,17 @@ async function cmd_auth(args, msg) {
 }
 async function cmd_chatgpt(args, msg) {
     let wechatConversation = await getWechatConversation(msg);
+    async function clear() {
+        let chatGPTConversation = newChatGPTConversation(chatGPT, wechatConversation);
+        ChatGPTSession.set(wechatConversation.id, chatGPTConversation);
+        wechatConversation.option.chatgpt.conversationId = chatGPTConversation.conversationId;
+        dumpChatGPTSession();
+        await msg.say("已清空聊天记录");
+    }
     if (args.length > 0) {
         switch (args[0]) {
-            case "replyEveryoneInRoom": // 在群里回复所有人
-                if (args.length == 2) {
-                    if (args[1] == "true") {
-                        wechatConversation.option.chatgpt.replyEveryoneInRoom = true;
-                        await msg.say("已开启在群里回复所有人");
-                    }
-                    else if (args[1] == "false") {
-                        wechatConversation.option.chatgpt.replyEveryoneInRoom = false;
-                        await msg.say("已关闭在群里回复所有人");
-                    }
-                    dumpWeChatConversation();
-                }
-                break;
             case "clear":
-                let chatGPTConversation = new ChatGPTConversation(chatGPT, wechatConversation);
-                ChatGPTSession.set(wechatConversation.id, chatGPTConversation);
-                wechatConversation.option.chatgpt.conversationId = chatGPTConversation.conversationId;
-                dumpChatGPTSession();
-                await msg.say("已清空聊天记录");
+                await clear();
                 break;
             case "recover": // 恢复chatgpt会话
                 if (args.length == 2) {
@@ -240,7 +231,7 @@ async function cmd_chatgpt(args, msg) {
                     }
                     if (!ChatGPTSession.has(wechatConversation.id)) {
                         log.info("cmd_chatgpt", "Create new ChatGPT conversation");
-                        let chatGPTConversation = new ChatGPTConversation(chatGPT, wechatConversation);
+                        let chatGPTConversation = newChatGPTConversation(chatGPT, wechatConversation);
                         ChatGPTSession.set(wechatConversation.id, chatGPTConversation);
                         wechatConversation.option.chatgpt.conversationId = chatGPTConversation.conversationId;
                     }
@@ -300,16 +291,42 @@ async function cmd_chatgpt(args, msg) {
                 }
                 break;
             case "disable":
-                wechatConversation.option.chatgpt.enable = false;
-                if (ChatGPTSession.has(wechatConversation.id)) {
-                    ChatGPTSession.delete(wechatConversation.id);
-                    dumpChatGPTSession();
+                if (args.length == 1) {
+                    wechatConversation.option.chatgpt.enable = false;
+                    if (ChatGPTSession.has(wechatConversation.id)) {
+                        ChatGPTSession.delete(wechatConversation.id);
+                        dumpChatGPTSession();
+                    }
+                }
+                else if (args.length == 2) {
+                    if (args[1] == "replyEveryoneInRoom") {
+                        wechatConversation.option.chatgpt.replyEveryoneInRoom = false;
+                        await msg.say("已关闭在群里回复所有人");
+                    }
+                    else if (args[1] == "customRoleToContact") {
+                        wechatConversation.option.chatgpt.customRoleToContact = false;
+                        await clear();
+                        await msg.say("已关闭自定义角色");
+                    }
                 }
                 dumpWeChatConversation();
                 break;
             case "enable":
-                // 已经确定wechatConversationOptions存在id
-                wechatConversation.option.chatgpt.enable = true;
+                if (args.length == 1) {
+                    // 已经确定wechatConversationOptions存在id
+                    wechatConversation.option.chatgpt.enable = true;
+                }
+                else if (args.length == 2) {
+                    if (args[1] == "replyEveryoneInRoom") {
+                        wechatConversation.option.chatgpt.replyEveryoneInRoom = true;
+                        await msg.say("已开启在群里回复所有人");
+                    }
+                    else if (args[1] == "customRoleToContact") {
+                        wechatConversation.option.chatgpt.customRoleToContact = true;
+                        await clear();
+                        await msg.say("已开启自定义角色");
+                    }
+                }
                 dumpWeChatConversation();
                 break;
             default:
@@ -407,6 +424,11 @@ let chatGPT = new ChatGPTAPI({
     apiKey: config.chatgpt.apiKey,
     getMessageById: getMessageById,
     upsertMessage: upsertMessage,
+    userLabel: config.chatgpt.userLabel,
+    assistantLabel: config.chatgpt.assistantLabel,
+    completionParams: {
+        model: config.chatgpt.model || "text-chat-davinci-002-20221122",
+    },
 });
 let ChatGPTSession = new Map(); // string是WechatConversation的id, 会话可以随时重置, 但是wechat id在单次登录时永远不变
 let MessageMap = new Map();
@@ -458,7 +480,7 @@ async function loadChatGPT(api = chatGPT) {
                     // 说明这个会话已经不存在了, 不恢复ChatGPT的内容
                     return;
                 }
-                let c = new ChatGPTConversation(api, wechatConversation);
+                let c = newChatGPTConversation(api, wechatConversation);
                 c.conversationId = v.conversationId;
                 c.messageIdList = v.messageIdList;
                 ChatGPTSession.set(wechatConversation.id, c);
@@ -492,13 +514,61 @@ async function loadChatGPT(api = chatGPT) {
         log.info("ChatGPT", e.message);
     }
 }
-// function getChatGPTConversation(api: ChatGPTAPI, wechatC: WechatConversation) {
-//     return new ChatGPTConversation(api, wechatC);
-// }
+function newChatGPTConversation(api, wechatConversation) {
+    let c = new ChatGPTConversation(api, wechatConversation);
+    switch (wechatConversation.type) {
+        case "contact":
+            if (wechatConversation.option.chatgpt.customRoleToContact) {
+                if (config.chatgpt.experiment.contactPrefix) {
+                    c.promptPrefix = `${config.chatgpt.experiment.contactPrefix}
+                    当前时间: ${new Date().toString()}`;
+                }
+                else {
+                    log.warn("ChatGPT", "未设置contactPrefix但启用了自定义角色, 无法使用自定义角色, 恢复默认");
+                }
+            }
+            break;
+        case "room":
+            c.promptPrefix = `
+            你处在一个微信群中，需要和很多人聊天。
+            聊天的信息以json格式传递给你，其中包含了发送人名称，发送时间，是否提及你，以及内容。格式类似如下：
+            '{"name": "xxx", time: "xxx", "mentionSelf": false, "text": "消息内容"}'。
+            你需要回复一个json，其中包含了是否发送消息，以及发送的内容。格式必须如下：
+            '{"send": true, "text": "你发送的消息"}'。
+            如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你，你可以自由选择是否回复消息。不回复的格式必须如下：
+            '{"send": false}'。
+            如果你想特别提醒某个人，你可以在消息中用@他的名字再加一个空格来提及他，如：@ZC 。
+            ${config.chatgpt.experiment.roomRoleDefinition
+                ? config.chatgpt.experiment.roomRoleDefinition
+                : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"}
+            在消息没有提及你的情况下，你需要控制回复频率，你最多只能连续回复50%的消息，平均回复率大约为10%。
+            `;
+            // c.promptPrefix = `
+            // You are in a WeChat group and need to chat with many people.
+            // The chat information is passed to you in json format, which includes the sender's name, sending time, whether you are mentioned, and the content. The format is similar to the following:
+            // '{"name": "xxx", time: "xxx", "mentionSelf": false, "text": "message content"}'.
+            // You need to reply with a json, which includes whether to send a message, and what to send. The format must be as follows:
+            // '{"send": true, "text": "The message you sent"}'.
+            // If mentionSelf==true, you must reply to the message. If you mentionSelf==false, you are free to reply to the message or not. The format of the non-reply must be as follows:
+            // '{"send": false}'.
+            // If you want to remind someone specifically, you can use @hisname followed by a space to mention him in the message, such as: @ZC How are you?.
+            // ${
+            //     config.chatgpt.experiment.roomRoleDefinition
+            //         ? config.chatgpt.experiment.roomRoleDefinition
+            //         : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"
+            // }
+            //     In the case that the message does not mention you, you need to control the reply frequency. You can only reply to 50% of the messages continuously at most, and the average reply rate is about 10%.
+            // `;
+            break;
+    }
+    return c;
+}
 class ChatGPTConversation {
     wechatConversation;
     conversationId;
     messageIdList;
+    promptPrefix;
+    promptSuffix;
     _api;
     constructor(api, wechatC) {
         this._api = api;
@@ -507,21 +577,50 @@ class ChatGPTConversation {
         wechatC.option.chatgpt.conversationId = this.conversationId;
         this.messageIdList = [];
     }
-    async sendMessage(message, opts = {}) {
-        if (this.conversationId && !opts.conversationId) {
-            opts.conversationId = this.conversationId;
-        }
+    async sendMessage(message, opts = {}, roomOptions = {}) {
+        opts.conversationId = opts.conversationId || this.conversationId;
+        opts.promptPrefix = opts.promptPrefix || this.promptPrefix;
+        opts.promptSuffix = opts.promptSuffix || this.promptSuffix;
         // 这里的逻辑是, 当群聊中有两个人在很接近的时间之内连发两条消息, 则他们都以这之前的最后一条ai消息作为上文.
         if (this.messageIdList.length > 0 && !opts.parentMessageId) {
             opts.parentMessageId = this.messageIdList[this.messageIdList.length - 1];
         }
-        let response = await this._api.sendMessage(message, opts);
+        let newMessage = "";
+        switch (this.wechatConversation.type) {
+            case "contact":
+                newMessage = message;
+                break;
+            case "room":
+                newMessage = JSON.stringify({ name: roomOptions.name, mentionSelf: true, time: roomOptions.time, text: message });
+                break;
+        }
+        let response = await this._api.sendMessage(newMessage, opts);
         this.messageIdList.push(response.id);
-        // if (!this.conversationId) {
-        //     this.conversationId = response.conversationId;
-        // }
         dumpChatGPTSession();
-        return response;
+        let respText;
+        switch (this.wechatConversation.type) {
+            case "contact":
+                respText = response.text;
+                break;
+            case "room":
+                let logPrefix = "ChatGPTInRoom";
+                let respJSON;
+                try {
+                    respJSON = JSON.parse(response.text);
+                    if (respJSON.send) {
+                        respText = respJSON.text;
+                    }
+                    else {
+                        log.info(logPrefix, "send==false, ChatGPT希望不作回复");
+                    }
+                }
+                catch (e) {
+                    respText = response.text;
+                    log.warn(logPrefix, "ChatGPT返回的消息不是json，已经自动转换为json");
+                }
+                break;
+        }
+        return respText;
     }
 }
 // Wechaty 事件
@@ -684,7 +783,7 @@ async function onMessage(msg) {
                     // ChatGPT
                     if (!ChatGPTSession.has(wechatConversation.id)) {
                         log.info(logPrefix, "Create new ChatGPT conversation");
-                        let chatGPTConversation = new ChatGPTConversation(chatGPT, wechatConversation);
+                        let chatGPTConversation = newChatGPTConversation(chatGPT, wechatConversation);
                         ChatGPTSession.set(wechatConversation.id, chatGPTConversation);
                         wechatConversation.option.chatgpt.conversationId = chatGPTConversation.conversationId;
                         // dumpChatGPTSession();
@@ -695,8 +794,13 @@ async function onMessage(msg) {
                     try {
                         resp = await c.sendMessage(plainText, {
                             timeoutMs: config.chatgpt.timeout * 1000,
-                        });
-                        await msg.say(resp.text);
+                        }, wechatConversation.type == "room" ? { name: msg.talker().name(), time: msg.date().toString() } : undefined);
+                        if (resp) {
+                            await msg.say(resp);
+                        }
+                        else {
+                            // 如果是个人对话，一定可以发送消息，如果是群聊中@，理论上也一定有消息，除非chatgpt不想。所以这里一般运行不到
+                        }
                     }
                     catch (e) {
                         switch (e.message) {
@@ -760,47 +864,21 @@ async function onMessage(msg) {
             // ChatGPT
             if (!ChatGPTSession.has(wechatConversation.id)) {
                 log.info(logPrefix, "Create new ChatGPT conversation");
-                let chatGPTConversation = new ChatGPTConversation(chatGPT, wechatConversation);
+                let chatGPTConversation = newChatGPTConversation(chatGPT, wechatConversation);
                 ChatGPTSession.set(wechatConversation.id, chatGPTConversation);
                 wechatConversation.option.chatgpt.conversationId = chatGPTConversation.conversationId;
                 // dumpChatGPTSession();
             }
             let c = ChatGPTSession.get(wechatConversation.id);
-            let roomRoleDefinition = "";
-            try {
-                roomRoleDefinition = config.chatgpt.experiment.roomRoleDefinition;
-            }
-            catch { }
-            let pretext = `现在你处在一个多人聊天室当中，需要和很多人聊天。
-                我会把发送消息的人的名字以及消息内容用类似'{"name": "xxx", "text": "xxx"}'这样的json放在下面传递给你。
-                如果我在结尾发了json给你，你必须判断是否要发送消息，并只返回可解析的json，像'{"send": true, "text": "你说的话"}'这样。
-                如果我没有发json给你，你必须回复普通文本，绝对不允许用json。
-                如果你想特别回复某个人，你可以在消息中@他的名字来提及他。` +
-                roomRoleDefinition +
-                `
-                你必须尽可能让大家不发现你是ai。
-                你必须控制你的回复频率，不能每句话都选择发送消息，回复率必须低于60%，只有与你有关的才回复，如果你不清楚是否要回答，那就最好不要回答。
-                下面是聊天室中最新消息的json格式。\n`;
-            let text = pretext + JSON.stringify({ name: msg.talker().name(), text: msg.text() });
+            let text = JSON.stringify({ name: msg.talker().name(), mentionSelf: false, time: msg.date().toString(), text: msg.text() });
             log.info(logPrefix, "Send message to ChatGPT");
             let resp;
             try {
                 resp = await c.sendMessage(text, {
                     timeoutMs: config.chatgpt.timeout * 1000,
                 });
-                let respJSON;
-                try {
-                    respJSON = JSON.parse(resp.text);
-                }
-                catch (e) {
-                    respJSON = { send: true, text: resp.text };
-                    log.warn(logPrefix, "ChatGPT返回的消息不是json，已经自动转换为json");
-                }
-                if (respJSON.send == "true" || respJSON.send == true) {
-                    await msg.say(respJSON.text);
-                }
-                else {
-                    log.info(logPrefix, "send==false, ChatGPT希望不作回复");
+                if (resp) {
+                    await msg.say(resp);
                 }
             }
             catch (e) {

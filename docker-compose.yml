@@ -12,7 +12,7 @@ services:
         restart: always
         # init: true # 似乎曾经在用浏览器方法时具有特殊意义
         environment:
-            - WECHATY_LOG=verbose
+            - WECHATY_LOG=INFO
         volumes:
             - ./config:/wechat-bot/config
 networks:

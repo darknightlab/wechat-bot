@@ -21,7 +21,7 @@
     },
     "homepage": "https://github.com/darknightlab/wechat-bot#readme",
     "dependencies": {
-        "chatgpt": "^4.1.1",
+        "chatgpt": "^4.2.0",
         "fast-xml-parser": "^4.1.1",
         "form-data": "^4.0.0",
         "html-entities": "^2.3.3",

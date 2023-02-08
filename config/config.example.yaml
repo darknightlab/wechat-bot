@@ -21,7 +21,11 @@ chatgpt:
     enable: true
     apiKey: # openai apikey
     timeout: 60
+    model: text-davinci-003 # text-chat-davinci-002-20221122
+    assistantLabel: wechat-bot
+    userLabel:
     experiment:
+        contactPrefix:
         roomRoleDefinition:
 
 animepic:
