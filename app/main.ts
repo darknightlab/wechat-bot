@@ -481,17 +481,23 @@ type ConversationTmpls = {
     messageMap: Map<string, ChatMessage>;
 };
 
-let chatGPT = new ChatGPTAPI({
-    apiKey: config.chatgpt.apiKey,
-    getMessageById: getMessageById,
-    upsertMessage: upsertMessage,
-    userLabel: config.chatgpt.userLabel,
-    assistantLabel: config.chatgpt.assistantLabel,
-    maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
-    completionParams: {
-        model: config.chatgpt.model.name || "text-chat-davinci-002-20221122",
-    },
+let chatGPT: ChatGPTAPI[] = [];
+config.chatgpt.apiKeys.forEach((apiKey: string) => {
+    chatGPT.push(
+        new ChatGPTAPI({
+            apiKey: apiKey,
+            getMessageById: getMessageById,
+            upsertMessage: upsertMessage,
+            userLabel: config.chatgpt.userLabel,
+            assistantLabel: config.chatgpt.assistantLabel,
+            maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
+            completionParams: {
+                model: config.chatgpt.model.name || "text-chat-davinci-002-20221122",
+            },
+        })
+    );
 });
+
 let ChatGPTSession: Map<string, ChatGPTConversation> = new Map(); // string是WechatConversation的id, 会话可以随时重置, 但是wechat id在单次登录时永远不变
 let MessageMap: Map<string, ChatMessage> = new Map();
 let conversationTmpls: ConversationTmpls = {
@@ -506,9 +512,9 @@ class ChatGPTConversation {
     promptPrefix: string | undefined;
     promptSuffix: string | undefined;
 
-    _api: ChatGPTAPI;
-    constructor(api: ChatGPTAPI, wechatC: WechatConversation) {
-        this._api = api;
+    _apiPool: ChatGPTAPI[];
+    constructor(apiPool: ChatGPTAPI[], wechatC: WechatConversation) {
+        this._apiPool = apiPool;
         this.conversationId = crypto.randomUUID();
         this.wechatConversation = wechatC;
         wechatC.option.chatgpt.conversationId = this.conversationId;
@@ -534,7 +540,7 @@ class ChatGPTConversation {
                 newMessage = JSON.stringify({ name: roomOptions.name, mentionSelf: true, time: roomOptions.time, text: message });
                 break;
         }
-        let response = await this._api.sendMessage(newMessage, opts);
+        let response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
         this.messageIdList.push(response.id);
         dumpChatGPTSession();
 
@@ -607,7 +613,7 @@ function dumpChatGPTSession() {
 }
 
 // 恢复所有有关ChatGPT的数据
-async function loadChatGPT(api: ChatGPTAPI = chatGPT) {
+async function loadChatGPT(api: ChatGPTAPI[] = chatGPT) {
     // 此时所有的待恢复的东西一定是空的
     // session
     type Conversation = {
@@ -665,7 +671,7 @@ async function loadChatGPT(api: ChatGPTAPI = chatGPT) {
     }
 }
 
-function newChatGPTConversation(api: ChatGPTAPI, wechatConversation: WechatConversation) {
+function newChatGPTConversation(api: ChatGPTAPI[], wechatConversation: WechatConversation) {
     let c = new ChatGPTConversation(api, wechatConversation);
     switch (wechatConversation.type) {
         case "contact":

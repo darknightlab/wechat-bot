@@ -19,7 +19,9 @@ email:
 
 chatgpt:
     enable: true
-    apiKey: # openai apikey
+    apiKeys: # openai apikey
+        - xxx
+        - sss
     timeout: 60
     model:
         name: text-davinci-003 # text-chat-davinci-002-20221122

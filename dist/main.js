@@ -420,16 +420,19 @@ async function send2Archive(url) {
         return null;
     }
 }
-let chatGPT = new ChatGPTAPI({
-    apiKey: config.chatgpt.apiKey,
-    getMessageById: getMessageById,
-    upsertMessage: upsertMessage,
-    userLabel: config.chatgpt.userLabel,
-    assistantLabel: config.chatgpt.assistantLabel,
-    maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
-    completionParams: {
-        model: config.chatgpt.model.name || "text-chat-davinci-002-20221122",
-    },
+let chatGPT = [];
+config.chatgpt.apiKeys.forEach((apiKey) => {
+    chatGPT.push(new ChatGPTAPI({
+        apiKey: apiKey,
+        getMessageById: getMessageById,
+        upsertMessage: upsertMessage,
+        userLabel: config.chatgpt.userLabel,
+        assistantLabel: config.chatgpt.assistantLabel,
+        maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
+        completionParams: {
+            model: config.chatgpt.model.name || "text-chat-davinci-002-20221122",
+        },
+    }));
 });
 let ChatGPTSession = new Map(); // string是WechatConversation的id, 会话可以随时重置, 但是wechat id在单次登录时永远不变
 let MessageMap = new Map();
@@ -443,9 +446,9 @@ class ChatGPTConversation {
     messageIdList;
     promptPrefix;
     promptSuffix;
-    _api;
-    constructor(api, wechatC) {
-        this._api = api;
+    _apiPool;
+    constructor(apiPool, wechatC) {
+        this._apiPool = apiPool;
         this.conversationId = crypto.randomUUID();
         this.wechatConversation = wechatC;
         wechatC.option.chatgpt.conversationId = this.conversationId;
@@ -468,7 +471,7 @@ class ChatGPTConversation {
                 newMessage = JSON.stringify({ name: roomOptions.name, mentionSelf: true, time: roomOptions.time, text: message });
                 break;
         }
-        let response = await this._api.sendMessage(newMessage, opts);
+        let response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
         this.messageIdList.push(response.id);
         dumpChatGPTSession();
         let respText;
@@ -885,13 +888,14 @@ async function onMessage(msg) {
             }
             catch (e) {
                 switch (e.message) {
+                    // 因为在群里, 所以出错时不再回复
                     case "fetch failed":
                         log.error(logPrefix, e);
-                        await msg.say("fetch failed, 请重新发送上一条消息");
+                        // await msg.say("fetch failed, 请重新发送上一条消息");
                         break;
                     default:
                         log.error(logPrefix, e);
-                        await msg.say(e.message);
+                        // await msg.say(e.message);
                         break;
                 }
             }
