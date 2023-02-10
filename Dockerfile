@@ -3,7 +3,8 @@ FROM node:lts-bullseye-slim
 # install chrome and chromedriver
 WORKDIR /
 RUN apt update && apt install -y git unzip wget && \
-    wget -O chromedriver_linux64.zip https://chromedriver.storage.googleapis.com/107.0.5304.62/chromedriver_linux64.zip && \
+    VERSION=$(wget -qO - http://chromedriver.storage.googleapis.com/LATEST_RELEASE) && \
+    wget -O chromedriver_linux64.zip http://chromedriver.storage.googleapis.com/$VERSION/chromedriver_linux64.zip && \
     unzip chromedriver_linux64.zip && \
     mv chromedriver /usr/bin/chromedriver && chmod +x /usr/bin/chromedriver && rm chromedriver_linux64.zip && \
     wget -O google-chrome-stable_current_amd64.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
