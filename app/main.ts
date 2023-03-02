@@ -483,7 +483,7 @@ type ConversationTmpls = {
 };
 
 let chatGPT: ChatGPTAPI[] = [];
-let chatProxy = new undici.ProxyAgent(config.chatgpt.proxy);
+let chatProxy = config.chatgpt.proxy ? new undici.ProxyAgent(config.chatgpt.proxy) : undefined;
 config.chatgpt.apiKeys.forEach((apiKey: string) => {
     chatGPT.push(
         new ChatGPTAPI({
@@ -494,16 +494,18 @@ config.chatgpt.apiKeys.forEach((apiKey: string) => {
             completionParams: {
                 model: config.chatgpt.model.name || "gpt-3.5-turbo-0301",
             },
-            fetch: async function (input, init?) {
-                let res = undici.fetch(
-                    input as any,
-                    {
-                        dispatcher: chatProxy,
-                        ...init,
-                    } as any
-                );
-                return res as any;
-            },
+            fetch: chatProxy
+                ? async function (input, init?) {
+                      let res = undici.fetch(
+                          input as any,
+                          {
+                              dispatcher: chatProxy,
+                              ...init,
+                          } as any
+                      );
+                      return res as any;
+                  }
+                : undefined,
         })
     );
 });

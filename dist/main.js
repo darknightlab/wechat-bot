@@ -422,7 +422,7 @@ async function send2Archive(url) {
     }
 }
 let chatGPT = [];
-let chatProxy = new undici.ProxyAgent(config.chatgpt.proxy);
+let chatProxy = config.chatgpt.proxy ? new undici.ProxyAgent(config.chatgpt.proxy) : undefined;
 config.chatgpt.apiKeys.forEach((apiKey) => {
     chatGPT.push(new ChatGPTAPI({
         apiKey: apiKey,
@@ -432,13 +432,15 @@ config.chatgpt.apiKeys.forEach((apiKey) => {
         completionParams: {
             model: config.chatgpt.model.name || "gpt-3.5-turbo-0301",
         },
-        fetch: async function (input, init) {
-            let res = undici.fetch(input, {
-                dispatcher: chatProxy,
-                ...init,
-            });
-            return res;
-        },
+        fetch: chatProxy
+            ? async function (input, init) {
+                let res = undici.fetch(input, {
+                    dispatcher: chatProxy,
+                    ...init,
+                });
+                return res;
+            }
+            : undefined,
     }));
 });
 let ChatGPTSession = new Map(); // string是WechatConversation的id, 会话可以随时重置, 但是wechat id在单次登录时永远不变
