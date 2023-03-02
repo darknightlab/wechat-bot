@@ -597,8 +597,8 @@ function newChatGPTConversation(api, wechatConversation) {
             '{"send": true, "text": "你发送的消息"}'。
             如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你并且你认为这条消息不是发给你的，你就不能回复。不回复的格式必须如下：
             '{"send": false}'。
-            如果你想特别提醒某个人，你可以在消息中用@他的名字再加一个空格来提及他，如：@xx 。
-            ${config.chatgpt.roomRole ? config.chatgpt.roomRole : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"}
+            利用'@'可以提醒某人这句话是回复他的，如：@xx 。
+            ${config.chatgpt.roomRole ? config.chatgpt.roomRole : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"}
             在消息没有提及你的情况下，你需要控制回复频率，你最多只能连续回复50%的消息，平均回复率大约为10%。
             `;
             // c.promptPrefix = `
