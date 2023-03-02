@@ -1,5 +1,6 @@
 import fs from "fs";
 import axios from "axios";
+import * as undici from "undici";
 import FormData from "form-data";
 import * as crypto from "crypto";
 import YAML from "yaml";
@@ -421,6 +422,7 @@ async function send2Archive(url) {
     }
 }
 let chatGPT = [];
+let chatProxy = new undici.ProxyAgent(config.chatgpt.proxy);
 config.chatgpt.apiKeys.forEach((apiKey) => {
     chatGPT.push(new ChatGPTAPI({
         apiKey: apiKey,
@@ -429,6 +431,13 @@ config.chatgpt.apiKeys.forEach((apiKey) => {
         maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
         completionParams: {
             model: config.chatgpt.model.name || "gpt-3.5-turbo-0301",
+        },
+        fetch: async function (input, init) {
+            let res = undici.fetch(input, {
+                dispatcher: chatProxy,
+                ...init,
+            });
+            return res;
         },
     }));
 });

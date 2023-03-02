@@ -1,5 +1,6 @@
 import fs from "fs";
 import axios from "axios";
+import * as undici from "undici";
 import FormData from "form-data";
 import * as crypto from "crypto";
 import YAML from "yaml";
@@ -482,6 +483,7 @@ type ConversationTmpls = {
 };
 
 let chatGPT: ChatGPTAPI[] = [];
+let chatProxy = new undici.ProxyAgent(config.chatgpt.proxy);
 config.chatgpt.apiKeys.forEach((apiKey: string) => {
     chatGPT.push(
         new ChatGPTAPI({
@@ -491,6 +493,16 @@ config.chatgpt.apiKeys.forEach((apiKey: string) => {
             maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
             completionParams: {
                 model: config.chatgpt.model.name || "gpt-3.5-turbo-0301",
+            },
+            fetch: async function (input, init?) {
+                let res = undici.fetch(
+                    input as any,
+                    {
+                        dispatcher: chatProxy,
+                        ...init,
+                    } as any
+                );
+                return res as any;
             },
         })
     );

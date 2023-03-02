@@ -22,6 +22,7 @@ chatgpt:
     apiKeys: # openai apikey
         - xxx
         - sss
+    proxy: http://localhost:7890
     timeout: 60
     model:
         name: gpt-3.5-turbo-0301 # gpt-3.5-turbo-0301
