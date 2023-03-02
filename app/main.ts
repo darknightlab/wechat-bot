@@ -533,7 +533,7 @@ class ChatGPTConversation {
                 newMessage = message;
                 break;
             case "room":
-                newMessage = JSON.stringify({ mentionSelf: roomOptions.mentionSelf, time: roomOptions.time, text: message }); // name: roomOptions.name,
+                newMessage = JSON.stringify({ name: roomOptions.name, mentionSelf: roomOptions.mentionSelf, time: roomOptions.time, text: message }); // name: roomOptions.name,
                 break;
         }
         let response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
@@ -683,13 +683,13 @@ function newChatGPTConversation(api: ChatGPTAPI[], wechatConversation: WechatCon
         case "room":
             c.systemMessage = `
             你处在一个微信群中，需要和很多人聊天。你的微信用户名是${bot.currentUser.name()}
-            聊天的信息以json格式传递给你，其中包含了发送时间，是否提及你，以及内容。发送人姓名已经在api中提供给你。格式类似如下：
-            '{"mentionSelf": false, time: "xxx", "text": "消息内容"}'。
+            聊天的信息以json格式传递给你，其中包含了发送人姓名，发送时间，是否提及你，以及内容。格式类似如下：
+            '{"name":xxx, "mentionSelf": false, "time": "xxx", "text": "消息内容"}'。
             你需要回复一个json，其中包含了是否发送消息，以及发送的内容。格式必须如下：
             '{"send": true, "text": "你发送的消息"}'。
             如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你并且你认为这条消息不是发给你的，你就不能回复。不回复的格式必须如下：
             '{"send": false}'。
-            利用'@'可以提醒某人这句话是回复他的，如：@xx 。
+            利用'@'可以强调这句话是回复某人的，如：@某人 。
             ${config.chatgpt.roomRole ? config.chatgpt.roomRole : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"}
             在消息没有提及你的情况下，你需要控制回复频率，你最多只能连续回复50%的消息，平均回复率大约为10%。
             `;
