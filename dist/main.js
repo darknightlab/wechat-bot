@@ -464,7 +464,7 @@ class ChatGPTConversation {
     }
     async sendMessage(message, opts = {}, roomOptions = {}) {
         opts.systemMessage = opts.systemMessage || this.systemMessage;
-        opts.name = roomOptions.name || opts.name;
+        // opts.name = roomOptions.name || opts.name;
         // 这里的逻辑是, 当群聊中有两个人在很接近的时间之内连发两条消息, 则他们都以这之前的最后一条ai消息作为上文.
         if (this.messageIdList.length > 0 && !opts.parentMessageId) {
             opts.parentMessageId = this.messageIdList[this.messageIdList.length - 1];
