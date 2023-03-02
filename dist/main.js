@@ -464,7 +464,7 @@ class ChatGPTConversation {
                 newMessage = message;
                 break;
             case "room":
-                newMessage = JSON.stringify({ mentionSelf: true, time: roomOptions.time, text: message }); // name: roomOptions.name,
+                newMessage = JSON.stringify({ mentionSelf: roomOptions.mentionSelf, time: roomOptions.time, text: message }); // name: roomOptions.name,
                 break;
         }
         let response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
@@ -597,7 +597,7 @@ function newChatGPTConversation(api, wechatConversation) {
             '{"send": true, "text": "你发送的消息"}'。
             如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你并且你认为这条消息不是发给你的，你就不能回复。不回复的格式必须如下：
             '{"send": false}'。
-            如果你想特别提醒某个人，你可以在消息中用@他的名字再加一个空格来提及他，如：@ZC 。
+            如果你想特别提醒某个人，你可以在消息中用@他的名字再加一个空格来提及他，如：@xx 。
             ${config.chatgpt.roomRole ? config.chatgpt.roomRole : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"}
             在消息没有提及你的情况下，你需要控制回复频率，你最多只能连续回复50%的消息，平均回复率大约为10%。
             `;
@@ -609,7 +609,7 @@ function newChatGPTConversation(api, wechatConversation) {
             // '{"send": true, "text": "The message you sent"}'.
             // If the message mentions you, i.e. mentionSelf==true, you must reply to the message. If a message doesn't mention you and you don't think it was meant for you, you can't reply. The format of the non-reply must be as follows:
             // '{"send": false}'.
-            // If you want to remind someone specifically, you can use @hisname followed by a space to mention him in the message, such as: @ZC How are you?.
+            // If you want to remind someone specifically, you can use @hisname followed by a space to mention him in the message, such as: @xx How are you?.
             // ${
             //     config.chatgpt.roomRole
             //         ? config.chatgpt.roomRole
@@ -756,6 +756,7 @@ async function onMessage(msg) {
                         // 排除了已经有协议头和"//"开头的情况
                         if (!uriObj.scheme && !url.startsWith("//")) {
                             url = "http://" + url;
+                            uriObj = URI.parse(url);
                         }
                         // 去掉过长的url, 否则archivebox会报错, 详见 https://github.com/ArchiveBox/ArchiveBox/issues/549
                         if (uriObj.host.length >= 512) {
@@ -793,7 +794,7 @@ async function onMessage(msg) {
                     try {
                         resp = await c.sendMessage(plainText, {
                             timeoutMs: config.chatgpt.timeout * 1000,
-                        }, wechatConversation.type == "room" ? { name: msg.talker().name(), time: msg.date().toString() } : undefined);
+                        }, wechatConversation.type == "room" ? { name: msg.talker().name(), time: msg.date().toString(), mentionSelf: true } : undefined);
                         if (resp) {
                             await msg.say(resp);
                         }
@@ -857,7 +858,6 @@ async function onMessage(msg) {
         }
     }
     else if (inRoom && replyEveryoneInRoom) {
-        // 实验性功能, 在群里面回复别人
         if (wechatConversation.option.chatgpt.enable && msg.type() == bot.Message.Type.Text) {
             log.info(logPrefix, "Message type is text");
             log.info(logPrefix, "replyEveryoneInRoom is enabled, will reply everyone in room");
@@ -870,13 +870,13 @@ async function onMessage(msg) {
                 // dumpChatGPTSession();
             }
             let c = ChatGPTSession.get(wechatConversation.id);
-            let text = JSON.stringify({ name: msg.talker().name(), mentionSelf: false, time: msg.date().toString(), text: msg.text() });
+            let text = msg.text();
             log.info(logPrefix, "Send message to ChatGPT");
             let resp;
             try {
                 resp = await c.sendMessage(text, {
                     timeoutMs: config.chatgpt.timeout * 1000,
-                });
+                }, { name: msg.talker().name(), time: msg.date().toString(), mentionSelf: false });
                 if (resp) {
                     await msg.say(resp);
                 }
