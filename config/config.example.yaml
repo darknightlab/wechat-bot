@@ -24,13 +24,10 @@ chatgpt:
         - sss
     timeout: 60
     model:
-        name: text-davinci-003 # text-chat-davinci-002-20221122
-        maxModelTokens: 2048
-    assistantLabel: wechat-bot
-    userLabel:
-    experiment:
-        contactPrefix:
-        roomRoleDefinition:
+        name: gpt-3.5-turbo-0301 # gpt-3.5-turbo-0301
+        maxModelTokens: 4096
+    contactRole:
+    roomRole:
 
 animepic:
     enable: true

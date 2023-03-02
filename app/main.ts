@@ -488,11 +488,9 @@ config.chatgpt.apiKeys.forEach((apiKey: string) => {
             apiKey: apiKey,
             getMessageById: getMessageById,
             upsertMessage: upsertMessage,
-            userLabel: config.chatgpt.userLabel,
-            assistantLabel: config.chatgpt.assistantLabel,
             maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
             completionParams: {
-                model: config.chatgpt.model.name || "text-chat-davinci-002-20221122",
+                model: config.chatgpt.model.name || "gpt-3.5-turbo-0301",
             },
         })
     );
@@ -509,8 +507,7 @@ class ChatGPTConversation {
     wechatConversation: WechatConversation;
     conversationId: string;
     messageIdList: string[];
-    promptPrefix: string | undefined;
-    promptSuffix: string | undefined;
+    systemMessage: string | undefined;
 
     _apiPool: ChatGPTAPI[];
     constructor(apiPool: ChatGPTAPI[], wechatC: WechatConversation) {
@@ -522,9 +519,8 @@ class ChatGPTConversation {
     }
 
     async sendMessage(message: string, opts: SendMessageOptions = {}, roomOptions: { name?: string; time?: string } = {}) {
-        opts.conversationId = opts.conversationId || this.conversationId;
-        opts.promptPrefix = opts.promptPrefix || this.promptPrefix;
-        opts.promptSuffix = opts.promptSuffix || this.promptSuffix;
+        opts.systemMessage = opts.systemMessage || this.systemMessage;
+        opts.name = roomOptions.name || opts.name;
 
         // 这里的逻辑是, 当群聊中有两个人在很接近的时间之内连发两条消息, 则他们都以这之前的最后一条ai消息作为上文.
         if (this.messageIdList.length > 0 && !opts.parentMessageId) {
@@ -537,7 +533,7 @@ class ChatGPTConversation {
                 newMessage = message;
                 break;
             case "room":
-                newMessage = JSON.stringify({ name: roomOptions.name, mentionSelf: true, time: roomOptions.time, text: message });
+                newMessage = JSON.stringify({ mentionSelf: true, time: roomOptions.time, text: message }); // name: roomOptions.name,
                 break;
         }
         let response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
@@ -676,29 +672,25 @@ function newChatGPTConversation(api: ChatGPTAPI[], wechatConversation: WechatCon
     switch (wechatConversation.type) {
         case "contact":
             if (wechatConversation.option.chatgpt.customRoleToContact) {
-                if (config.chatgpt.experiment.contactPrefix) {
-                    c.promptPrefix = `${config.chatgpt.experiment.contactPrefix}
+                if (config.chatgpt.contactRole) {
+                    c.systemMessage = `${config.chatgpt.contactRole}
                     当前时间: ${new Date().toString()}`;
                 } else {
-                    log.warn("ChatGPT", "未设置contactPrefix但启用了自定义角色, 无法使用自定义角色, 恢复默认");
+                    log.warn("ChatGPT", "未设置contactRole但启用了自定义角色, 无法使用自定义角色, 恢复默认");
                 }
             }
             break;
         case "room":
-            c.promptPrefix = `
+            c.systemMessage = `
             你处在一个微信群中，需要和很多人聊天。你的微信用户名是${bot.currentUser.name()}
-            聊天的信息以json格式传递给你，其中包含了发送人名称，发送时间，是否提及你，以及内容。格式类似如下：
-            '{"name": "xxx", time: "xxx", "mentionSelf": false, "text": "消息内容"}'。
+            聊天的信息以json格式传递给你，其中包含了发送时间，是否提及你，以及内容。发送人姓名已经在api中提供给你。格式类似如下：
+            '{"mentionSelf": false, time: "xxx", "text": "消息内容"}'。
             你需要回复一个json，其中包含了是否发送消息，以及发送的内容。格式必须如下：
             '{"send": true, "text": "你发送的消息"}'。
             如果消息提及了你，即mentionSelf==true，你必须回复消息。如果消息没有提及你并且你认为这条消息不是发给你的，你就不能回复。不回复的格式必须如下：
             '{"send": false}'。
             如果你想特别提醒某个人，你可以在消息中用@他的名字再加一个空格来提及他，如：@ZC 。
-            ${
-                config.chatgpt.experiment.roomRoleDefinition
-                    ? config.chatgpt.experiment.roomRoleDefinition
-                    : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"
-            }
+            ${config.chatgpt.roomRole ? config.chatgpt.roomRole : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"}
             在消息没有提及你的情况下，你需要控制回复频率，你最多只能连续回复50%的消息，平均回复率大约为10%。
             `;
             // c.promptPrefix = `
@@ -711,8 +703,8 @@ function newChatGPTConversation(api: ChatGPTAPI[], wechatConversation: WechatCon
             // '{"send": false}'.
             // If you want to remind someone specifically, you can use @hisname followed by a space to mention him in the message, such as: @ZC How are you?.
             // ${
-            //     config.chatgpt.experiment.roomRoleDefinition
-            //         ? config.chatgpt.experiment.roomRoleDefinition
+            //     config.chatgpt.roomRole
+            //         ? config.chatgpt.roomRole
             //         : "你是 ChatGPT，OpenAI 训练的大型语言模型。你对每个回复都尽可能简洁地回答（例如，不要冗长）。尽可能简洁地回答是非常重要的，所以请记住这一点。如果要生成列表，则不要有太多项目。保持项目数量简短。"
             // }
             // In the case that the message does not mention you, you need to control the reply frequency. You can only reply to 50% of the messages continuously at most, and the average reply rate is about 10%.
