@@ -608,6 +608,7 @@ class ChatGPTConversation {
                             } else {
                                 // 决定不发送
                                 response = test_response;
+                                log.info(logPrefix, `测试回复内容为: ${response.text}`);
                                 break;
                             }
                         } catch (e) {
