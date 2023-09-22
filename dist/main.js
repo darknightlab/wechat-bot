@@ -532,7 +532,7 @@ class ChatGPTConversation {
                                 response = test_response;
                                 break;
                             }
-                            log.info(logPrefix, `测试回复内容为: ${response.text}`);
+                            log.info(logPrefix, `测试回复内容为: ${test_respJSON.text}`);
                         }
                         catch (e) {
                             // 出错了, 重新让openai生成
