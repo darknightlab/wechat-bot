@@ -530,9 +530,9 @@ class ChatGPTConversation {
                             else {
                                 // 决定不发送
                                 response = test_response;
-                                log.info(logPrefix, `测试回复内容为: ${response.text}`);
                                 break;
                             }
+                            log.info(logPrefix, `测试回复内容为: ${response.text}`);
                         }
                         catch (e) {
                             // 出错了, 重新让openai生成
