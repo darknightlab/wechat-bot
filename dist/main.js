@@ -426,12 +426,11 @@ let chatProxy = config.chatgpt.proxy ? new undici.ProxyAgent(config.chatgpt.prox
 config.chatgpt.apiKeys.forEach((apiKey) => {
     chatGPT.push(new ChatGPTAPI({
         apiKey: apiKey,
-        apiBaseUrl: config.chatgpt.apiBaseUrl,
         getMessageById: getMessageById,
         upsertMessage: upsertMessage,
         maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,
         completionParams: {
-            model: config.chatgpt.model.name || "gpt-3.5-turbo-0301",
+            model: config.chatgpt.model.name || "gpt-3.5-turbo",
         },
         fetch: chatProxy
             ? async function (input, init) {
@@ -443,6 +442,25 @@ config.chatgpt.apiKeys.forEach((apiKey) => {
             }
             : undefined,
     }));
+});
+let localAPI = new ChatGPTAPI({
+    apiKey: "localassistmode",
+    apiBaseUrl: config.chatgpt.localAPIUrl,
+    getMessageById: getMessageById,
+    upsertMessage: upsertMessage,
+    maxModelTokens: config.chatgpt.localMaxModelTokens || 4096,
+    completionParams: {
+        model: config.chatgpt.model.name || "gpt-3.5-turbo",
+    },
+    fetch: chatProxy
+        ? async function (input, init) {
+            let res = undici.fetch(input, {
+                dispatcher: chatProxy,
+                ...init,
+            });
+            return res;
+        }
+        : undefined,
 });
 let ChatGPTSession = new Map(); // string是WechatConversation的id, 会话可以随时重置, 但是wechat id在单次登录时永远不变
 let MessageMap = new Map();
@@ -479,7 +497,58 @@ class ChatGPTConversation {
                 newMessage = JSON.stringify({ name: roomOptions.name, mentionSelf: roomOptions.mentionSelf, time: roomOptions.time, text: message }); // name: roomOptions.name,
                 break;
         }
-        let response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
+        // 随便定义一个, 最后一定会覆盖
+        let response = { id: "", text: "", role: "user" };
+        switch (this.wechatConversation.type) {
+            case "contact":
+                switch (config.chatgpt.contactMode) {
+                    case "local":
+                        response = await localAPI.sendMessage(newMessage, opts);
+                        break;
+                    case "openai":
+                        response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
+                        break;
+                    default:
+                        throw new Error(`config.chatgpt.contactMode ${config.chatgpt.contactMode} incorrect`);
+                }
+                break;
+            case "room":
+                let logPrefix = "ChatGPTInRoom";
+                switch (config.chatgpt.roomMode) {
+                    case "localassist":
+                        // 本地辅助, 本地决定不回复时不回复, 本地决定回复时请求openai
+                        log.info(logPrefix, "正在发送测试消息");
+                        let test_response = await localAPI.sendMessage(newMessage, opts);
+                        log.info(logPrefix, "测试消息发送完成");
+                        let test_respJSON;
+                        try {
+                            test_respJSON = JSON.parse(test_response.text);
+                            if (test_respJSON.send) {
+                                // 决定要发送, 重新让openai生成
+                                response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
+                            }
+                            else {
+                                // 决定不发送
+                                response = test_response;
+                                break;
+                            }
+                        }
+                        catch (e) {
+                            // 出错了, 重新让openai生成
+                            response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
+                        }
+                        break;
+                    case "local":
+                        response = await localAPI.sendMessage(newMessage, opts);
+                        break;
+                    case "openai":
+                        response = await this._apiPool[Math.floor(Math.random() * this._apiPool.length)].sendMessage(newMessage, opts);
+                        break;
+                    default:
+                        throw new Error(`config.chatgpt.roomMode ${config.chatgpt.roomMode} incorrect`);
+                }
+                break;
+        }
         this.messageIdList.push(response.id);
         dumpChatGPTSession();
         let respText;
