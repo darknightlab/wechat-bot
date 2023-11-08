@@ -1,4 +1,4 @@
-FROM node:lts-bullseye-slim
+FROM node:lts-bookworm-slim
 
 # install chrome and chromedriver
 WORKDIR /
