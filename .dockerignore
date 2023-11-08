@@ -1,7 +1,6 @@
 .github/
 .vscode/
 config/
-dist/
 docs/
 node_modules/
 .gitignore
