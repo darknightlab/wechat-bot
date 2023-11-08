@@ -1,12 +1,12 @@
 {
     "name": "wechat-bot",
-    "version": "1.4.3",
+    "version": "1.10.5",
     "description": "a wechat bot using wechaty",
     "main": "dist/main.js",
     "type": "module",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
-        "start": "ts-node --esm app/main.ts",
+        "start": "node dist/main.js",
         "build": "tsc"
     },
     "repository": {
