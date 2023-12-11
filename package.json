@@ -1,6 +1,6 @@
 {
     "name": "wechat-bot",
-    "version": "1.10.5",
+    "version": "1.10.8",
     "description": "a wechat bot using wechaty",
     "main": "dist/main.js",
     "type": "module",
