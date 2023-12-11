@@ -940,42 +940,80 @@ async function onMessage(msg) {
         }
     }
     else if (inRoom && replyEveryoneInRoom) {
-        if (wechatConversation.option.chatgpt.enable && msg.type() == bot.Message.Type.Text) {
-            log.info(logPrefix, "Message type is text");
-            log.info(logPrefix, "replyEveryoneInRoom is enabled, will reply everyone in room");
-            // ChatGPT
-            if (!ChatGPTSession.has(wechatConversation.id)) {
-                log.info(logPrefix, "Create new ChatGPT conversation");
-                let chatGPTConversation = newChatGPTConversation(chatGPT, wechatConversation);
-                ChatGPTSession.set(wechatConversation.id, chatGPTConversation);
-                wechatConversation.option.chatgpt.conversationId = chatGPTConversation.conversationId;
-                // dumpChatGPTSession();
-            }
-            let c = ChatGPTSession.get(wechatConversation.id);
-            let text = msg.text();
-            log.info(logPrefix, "Send message to ChatGPT");
-            let resp;
-            try {
-                resp = await c.sendMessage(text, {
-                    timeoutMs: config.chatgpt.timeout * 1000,
-                }, { name: msg.talker().name(), time: msg.date().toString(), mentionSelf: false });
-                if (resp) {
-                    await msg.say(resp);
+        switch (msg.type()) {
+            case bot.Message.Type.Text:
+                if (wechatConversation.option.chatgpt.enable) {
+                    log.info(logPrefix, "Message type is text");
+                    log.info(logPrefix, "replyEveryoneInRoom is enabled, will reply everyone in room");
+                    // ChatGPT
+                    if (!ChatGPTSession.has(wechatConversation.id)) {
+                        log.info(logPrefix, "Create new ChatGPT conversation");
+                        let chatGPTConversation = newChatGPTConversation(chatGPT, wechatConversation);
+                        ChatGPTSession.set(wechatConversation.id, chatGPTConversation);
+                        wechatConversation.option.chatgpt.conversationId = chatGPTConversation.conversationId;
+                        // dumpChatGPTSession();
+                    }
+                    let c = ChatGPTSession.get(wechatConversation.id);
+                    let text = msg.text();
+                    log.info(logPrefix, "Send message to ChatGPT");
+                    let resp;
+                    try {
+                        resp = await c.sendMessage(text, {
+                            timeoutMs: config.chatgpt.timeout * 1000,
+                        }, { name: msg.talker().name(), time: msg.date().toString(), mentionSelf: false });
+                        if (resp) {
+                            await msg.say(resp);
+                        }
+                    }
+                    catch (e) {
+                        switch (e.message) {
+                            // 因为在群里, 所以出错时不再回复
+                            case "fetch failed":
+                                log.error(logPrefix, e);
+                                // await msg.say("fetch failed, 请重新发送上一条消息");
+                                break;
+                            default:
+                                log.error(logPrefix, e);
+                                // await msg.say(e.message);
+                                break;
+                        }
+                    }
                 }
-            }
-            catch (e) {
-                switch (e.message) {
-                    // 因为在群里, 所以出错时不再回复
-                    case "fetch failed":
+                break;
+            case bot.Message.Type.Image:
+                // 和上面一模一样，以后需要修改
+                log.info(logPrefix, "Message type is image");
+                // animepic
+                if (wechatConversation.option.animepic.enable) {
+                    let imgBox = await msg.toFileBox();
+                    let img = await imgBox.toStream();
+                    let formdata = new FormData();
+                    formdata.append("img", img);
+                    axios
+                        .post(config.animepic.url, formdata)
+                        .then(async (res) => {
+                        let characters = "";
+                        Object.keys(res.data.character).forEach((name) => {
+                            characters += name + ",";
+                        });
+                        characters = characters.slice(0, -1);
+                        let tags = "";
+                        Object.keys(res.data.general).forEach((tag) => {
+                            tags += tag + ",";
+                        });
+                        tags = tags.slice(0, -1);
+                        let risk = "unknown";
+                        if (Object.keys(res.data.system).length === 1) {
+                            risk = Object.keys(res.data.system)[0].substring(7);
+                        }
+                        let imgInfo = `安全系数: ${risk}\n角色: ${characters}\n标签: ${tags}`;
+                        await msg.say(imgInfo);
+                    })
+                        .catch(async (e) => {
                         log.error(logPrefix, e);
-                        // await msg.say("fetch failed, 请重新发送上一条消息");
-                        break;
-                    default:
-                        log.error(logPrefix, e);
-                        // await msg.say(e.message);
-                        break;
+                        await msg.say(e.message);
+                    });
                 }
-            }
         }
     }
     else {
