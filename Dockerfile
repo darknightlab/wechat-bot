@@ -3,11 +3,10 @@ FROM node:lts-bookworm-slim
 # install chrome and chromedriver
 WORKDIR /
 RUN apt update && apt install -y git unzip wget && \
-    VERSION=$(wget -qO - http://chromedriver.storage.googleapis.com/LATEST_RELEASE) && \
-    wget -O chromedriver_linux64.zip http://chromedriver.storage.googleapis.com/$VERSION/chromedriver_linux64.zip && \
+    wget -O chromedriver_linux64.zip http://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip && \
     unzip chromedriver_linux64.zip && \
     mv chromedriver /usr/bin/chromedriver && chmod +x /usr/bin/chromedriver && rm chromedriver_linux64.zip && \
-    wget -O google-chrome-stable_amd64.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_$VERSION-1_amd64.deb && \
+    wget -O google-chrome-stable_amd64.deb https://mirror.cs.uchicago.edu/google-chrome/pool/main/g/google-chrome-stable/google-chrome-stable_114.0.5735.90-1_amd64.deb && \
     apt install ./google-chrome-stable_amd64.deb -y && \
     rm google-chrome-stable_amd64.deb && \
     apt autoremove -y && apt clean
