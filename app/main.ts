@@ -488,6 +488,7 @@ config.chatgpt.apiKeys.forEach((apiKey: string) => {
     chatGPT.push(
         new ChatGPTAPI({
             apiKey: apiKey,
+            apiBaseUrl: config.chatgpt.chatgptAPIUrl,
             getMessageById: getMessageById,
             upsertMessage: upsertMessage,
             maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,

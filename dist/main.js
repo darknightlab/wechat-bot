@@ -426,6 +426,7 @@ let chatProxy = config.chatgpt.proxy ? new undici.ProxyAgent(config.chatgpt.prox
 config.chatgpt.apiKeys.forEach((apiKey) => {
     chatGPT.push(new ChatGPTAPI({
         apiKey: apiKey,
+        apiBaseUrl: config.chatgpt.chatgptAPIUrl,
         getMessageById: getMessageById,
         upsertMessage: upsertMessage,
         maxModelTokens: config.chatgpt.model.maxModelTokens || 4096,

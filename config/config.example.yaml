@@ -20,6 +20,7 @@ email:
 chatgpt:
     enable: true
     contactMode: local # local, openai
+    chatgptAPIUrl: xxx
     roomMode: localassist # localassist, local, openai
     localAPIUrl: http://localhost:5001
     localMaxModelTokens: 4096
