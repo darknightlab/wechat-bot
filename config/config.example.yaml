@@ -2,9 +2,9 @@ wechat:
     qrcodeAPI: https://api.qrserver.com/v1/create-qr-code/?data=
     autoAcceptFriendshipText: # 自动接受好友请求的验证消息
     myaccount: # 你的微信昵称或备注, 是接收报告的微信, 不是机器人的微信
+    botaccount: # 机器人的微信昵称
     reportTime: # 每天0点0分0秒发送报告
         cron: 0 0 0 * * *
-        timezone: Asia/Shanghai
     authPassword: # 认证的字符串
 
 email:
@@ -16,6 +16,40 @@ email:
     senderName: wechat-bot
     receiver:
     interval: 600 # 每600s最多发送一封邮件, 防止封号
+
+
+chatbot:
+    chatllm:
+        enable: true
+        smallModel:
+            baseURL: http://localhost:5001
+            name: gpt-3.5-turbo
+            apiKey: xxx
+            timeout: 60
+            proxy: http://localhost:7890
+        mainModel:
+            baseURL: http://localhost:5001
+            name: gpt-3.5-turbo
+            apiKey: xxx
+            timeout: 60
+            proxy: http://localhost:7890
+        contactRole:
+        roomRole:
+
+    animepic:
+        enable: true
+        url:
+
+    archive:
+        enable: true
+        localurl: # 本地url
+        url: # 公网上的url
+        displayMode: SingleFile
+        command: /env/archivebox-python/bin/python3 /archivebox-python/main.py
+        username:
+        password:
+
+
 
 chatgpt:
     enable: true

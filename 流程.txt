@@ -1,0 +1,11 @@
+收到消息
+判断是否为命令
+是命令则执行（需要把命令也加到messages里吗？）
+不是则进入后续流程
+
+后续：
+每个中间件接收OriginalMessage，返回OriginalMessage[]。一般来说中间件应该要把OriginalMessage[]的内容加到messages里。
+1. animepic
+2. archivebox
+3. thinkByLLM
+4. 循环thinkByLLM直到没有输出
