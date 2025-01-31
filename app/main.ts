@@ -140,6 +140,26 @@ function onLogout(user: Contact) {
     log.info("StarterBot", "%s logout", user);
 }
 
+const MessageTypeMap: Map<number, string> = new Map([
+    [0, "unknown"],
+    [1, "attachment"],
+    [2, "audio"],
+    [3, "contact"],
+    [4, "chatHistory"],
+    [5, "emoticon"],
+    [6, "image"],
+    [7, "text"],
+    [8, "location"],
+    [9, "miniProgram"],
+    [10, "groupNote"],
+    [11, "transfer"],
+    [12, "redEnvelope"],
+    [13, "recalled"],
+    [14, "url"],
+    [15, "video"],
+    [16, "post"],
+]);
+
 async function onMessage(msg: Message) {
     let logPrefix = "Message";
     log.info(logPrefix, msg.toString());
@@ -162,8 +182,8 @@ async function onMessage(msg: Message) {
         let c = chatbot.getConversation(roomID, roomName, "room");
         let originalMessage: OriginalMessage = {
             conversation: c,
-            senderName: msg.talker().name(),
-            type: "room",
+            senderName: (await room.alias(msg.talker())) || msg.talker().name(),
+            type: MessageTypeMap.get(msg.type())!,
             time: msg.date(),
             mentionSelf: await msg.mentionSelf(),
             content: msg.text(),
@@ -178,7 +198,7 @@ async function onMessage(msg: Message) {
         let originalMessage: OriginalMessage = {
             conversation: c,
             senderName: talker.name(),
-            type: "contact",
+            type: MessageTypeMap.get(msg.type())!,
             time: msg.date(),
             mentionSelf: false,
             content: msg.text(),

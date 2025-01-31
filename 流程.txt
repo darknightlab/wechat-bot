@@ -4,8 +4,11 @@
 不是则进入后续流程
 
 后续：
-每个中间件接收OriginalMessage，返回OriginalMessage[]。一般来说中间件应该要把OriginalMessage[]的内容加到messages里。
+0. 添加收到的消息到messages
+每个中间件接收OriginalMessage，返回OriginalMessage[]。一般来说中间件应该要把返回的内容加到messages里。
 1. animepic
 2. archivebox
 3. thinkByLLM
 4. 循环thinkByLLM直到没有输出
+
+todo:加上log，各种通过不通过，send不send
