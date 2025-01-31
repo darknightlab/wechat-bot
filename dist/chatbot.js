@@ -1,7 +1,7 @@
 import fs from "fs";
 import OpenAI from "openai";
 import * as crypto from "crypto";
-import HttpsProxyAgent from "https-proxy-agent";
+import { HttpsProxyAgent } from "https-proxy-agent";
 function isJudgeResult(obj) {
     try {
         return typeof obj.send == "boolean" && typeof obj.voice == "boolean";
@@ -225,7 +225,7 @@ class ChatBot {
                 reasoning_effort: this.config.chatbot.chatllm.mainModel.reasoning_effort,
             }, this.config.chatbot.chatllm.mainModel.proxy
                 ? {
-                    httpAgent: HttpsProxyAgent(this.config.chatbot.chatllm.mainModel.proxy),
+                    httpAgent: new HttpsProxyAgent(this.config.chatbot.chatllm.mainModel.proxy),
                 }
                 : undefined);
             conversation.messages.push({ role: "assistant", content: ChatBot.removeThink(response.choices[0].message.content) });
@@ -338,7 +338,7 @@ class ChatBot {
                 reasoning_effort: this.config.chatbot.chatllm.preprocessingModel.reasoning_effort,
             }, this.config.chatbot.chatllm.preprocessingModel.proxy
                 ? {
-                    httpAgent: HttpsProxyAgent(this.config.chatbot.chatllm.preprocessingModel.proxy),
+                    httpAgent: new HttpsProxyAgent(this.config.chatbot.chatllm.preprocessingModel.proxy),
                 }
                 : undefined);
             console.log("前置模型返回结果:", result.choices[0].message.content);

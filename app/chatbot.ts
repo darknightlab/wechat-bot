@@ -1,7 +1,7 @@
 import fs from "fs";
 import OpenAI from "openai";
 import * as crypto from "crypto";
-import HttpsProxyAgent from "https-proxy-agent";
+import { HttpsProxyAgent } from "https-proxy-agent";
 
 type ConversationOptions = {
     chatllm: {
@@ -281,7 +281,7 @@ class ChatBot {
                 },
                 this.config.chatbot.chatllm.mainModel.proxy
                     ? {
-                          httpAgent: HttpsProxyAgent(this.config.chatbot.chatllm.mainModel.proxy),
+                          httpAgent: new HttpsProxyAgent(this.config.chatbot.chatllm.mainModel.proxy),
                       }
                     : undefined
             );
@@ -400,7 +400,7 @@ class ChatBot {
                 },
                 this.config.chatbot.chatllm.preprocessingModel.proxy
                     ? {
-                          httpAgent: HttpsProxyAgent(this.config.chatbot.chatllm.preprocessingModel.proxy),
+                          httpAgent: new HttpsProxyAgent(this.config.chatbot.chatllm.preprocessingModel.proxy),
                       }
                     : undefined
             );
